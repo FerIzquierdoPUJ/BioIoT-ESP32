@@ -14,7 +14,7 @@ public:
       az_span signatureBuffer,
       az_span sasTokenBuffer);
   int Generate(unsigned int expiryTimeInMinutes);
-  bool IsExpired();
+  bool IsExpired(unsigned int withinSeconds = 0);
   az_span Get();
 
 private:
@@ -27,4 +27,3 @@ private:
 };
 
 #endif // AZIOTSASTOKEN_H
-

@@ -1,0 +1,278 @@
+{
+  "schema_version": "1.0",
+  "deviceId": "esp32-bioiot-01",
+  "experiment_id": "EXP-001",
+  "timestampUtc": "2026-09-27T12:30:00Z",
+  "uptimeMs": 120000,
+  "wifiRssi": -3,
+  "status": "warning",
+  "alerts": [
+    "light_1_disconnected",
+    "light_2_disconnected",
+    "o2_gas_2_disconnected"
+  ],
+  "calibration": {
+    "version": 0,
+    "schema_version": 2,
+    "nvs_ok": true,
+    "ph": {
+      "m": -6.112459,
+      "b": 15.012668,
+      "source": "experimental_3point",
+      "input_unit": "V",
+      "buffers": [
+        4.01,
+        7.01,
+        10.01
+      ],
+      "r2": 0.9999586071
+    },
+    "turb": {
+      "m": -2310.5,
+      "b": 5435.3999
+    },
+    "do": {
+      "m": 0.13351912,
+      "input_unit": "mV",
+      "source": "experimental_2point",
+      "zero_mv": 0,
+      "saturation_100_mv": 748.9564,
+      "r2": 1
+    },
+    "temp": {
+      "m": 0.9741,
+      "b": 1.0038
+    },
+    "co2": {
+      "enabled": false,
+      "a": 0,
+      "b": 0,
+      "legacy_snapshot": true
+    },
+    "co2_1": {
+      "mode": "sen0159_vendor",
+      "source": "vendor_reference",
+      "provisional": true,
+      "enabled": true,
+      "zero_point_v": 0.22,
+      "reaction_voltage_v": 0.03,
+      "a": 0,
+      "b": 0
+    },
+    "o2_gas_1": {
+      "gain": 1,
+      "offset": 0,
+      "source": "sensor_internal_calibration"
+    },
+    "co2_2": {
+      "mode": "sen0159_vendor",
+      "source": "vendor_reference",
+      "provisional": true,
+      "enabled": true,
+      "zero_point_v": 0.22,
+      "reaction_voltage_v": 0.03,
+      "a": 0,
+      "b": 0
+    },
+    "o2_gas_2": {
+      "gain": 1,
+      "offset": 0,
+      "source": "sensor_internal_calibration"
+    }
+  },
+  "actuators": {
+    "ready": true,
+    "mode": "manual_c2d",
+    "lastStopReason": "boot",
+    "compressor": {
+      "on": false,
+      "expiresAt": 0,
+      "restartAllowedInMs": 60000
+    },
+    "led": {
+      "on": false,
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "brightness": 0,
+      "dutyR": 0,
+      "dutyG": 0,
+      "dutyB": 0,
+      "expiresAt": 0
+    },
+    "lastCommand": {
+      "commandId": "",
+      "accepted": false,
+      "reason": "no_command"
+    }
+  },
+  "diagnostics": {
+    "health": "warning",
+    "i2c": {
+      "tca_address": "0x72",
+      "tca_detected": true,
+      "last_error": 0,
+      "last_error_name": "ok",
+      "main_bus_isolated": true,
+      "consecutive_failures": 0
+    },
+    "analog_mux": {
+      "sampled": true,
+      "all_near_zero": false,
+      "channels_too_similar": true,
+      "all_zero_count": 0,
+      "sampled_at_ms": 120000
+    },
+    "color": {
+      "color_1_pulse_ok": true,
+      "color_2_pulse_ok": true,
+      "sampled_at_ms": 120000
+    },
+    "system": {
+      "free_heap": 185240,
+      "min_free_heap": 152000,
+      "max_alloc_heap": 110580,
+      "reset_reason": "power_on",
+      "mqtt_connected": true
+    }
+  },
+  "sensors": {
+    "ph": {
+      "expected": true,
+      "connected": true,
+      "raw": 117,
+      "voltage": 0.0943,
+      "value": null,
+      "unit": "pH",
+      "quality": "out_of_range"
+    },
+    "co2_1": {
+      "expected": true,
+      "connected": true,
+      "raw": 118,
+      "voltage": 0.0951,
+      "value": null,
+      "unit": "ppm",
+      "quality": "out_of_range",
+      "measurement_valid": false,
+      "below_reference_range": false,
+      "calibration_mode": "sen0159_vendor",
+      "calibration_source": "vendor_reference",
+      "provisional": true
+    },
+    "co2_2": {
+      "expected": true,
+      "connected": true,
+      "raw": 116,
+      "voltage": 0.0935,
+      "value": null,
+      "unit": "ppm",
+      "quality": "out_of_range",
+      "measurement_valid": false,
+      "below_reference_range": false,
+      "calibration_mode": "sen0159_vendor",
+      "calibration_source": "vendor_reference",
+      "provisional": true
+    },
+    "turbidity": {
+      "expected": false,
+      "connected": true,
+      "raw": 117,
+      "voltage": 0.0943,
+      "value": null,
+      "unit": "NTU",
+      "quality": "out_of_range"
+    },
+    "dissolved_oxygen": {
+      "expected": true,
+      "connected": true,
+      "raw": 113,
+      "voltage": 0.0911,
+      "saturation_pct": 12.16,
+      "value": 1.105,
+      "unit": "mg/L",
+      "quality": "good"
+    },
+    "tds": {
+      "expected": true,
+      "connected": true,
+      "raw": 114,
+      "voltage": 0.0919,
+      "value": 38.355,
+      "unit": "ppm",
+      "quality": "good"
+    },
+    "temperature": {
+      "expected": true,
+      "connected": true,
+      "raw": 19.12,
+      "value": 19.63,
+      "unit": "C",
+      "quality": "good"
+    },
+    "light_1": {
+      "expected": true,
+      "connected": false,
+      "value": null,
+      "unit": "lux",
+      "quality": "disconnected"
+    },
+    "light_2": {
+      "expected": true,
+      "connected": false,
+      "value": null,
+      "unit": "lux",
+      "quality": "disconnected"
+    },
+    "o2_gas_1": {
+      "expected": true,
+      "connected": true,
+      "i2c_detected": true,
+      "warming_up": true,
+      "stabilizing": false,
+      "measurement_valid": false,
+      "value": null,
+      "unit": "%vol",
+      "quality": "warming_up"
+    },
+    "o2_gas_2": {
+      "expected": true,
+      "connected": false,
+      "i2c_detected": false,
+      "warming_up": true,
+      "stabilizing": false,
+      "measurement_valid": false,
+      "value": null,
+      "unit": "%vol",
+      "quality": "communication_fault"
+    },
+    "color_1": {
+      "expected": true,
+      "connected": true,
+      "rPulse": 310,
+      "gPulse": 545,
+      "bPulse": 504,
+      "r": 253,
+      "g": 251,
+      "b": 252,
+      "h": 330,
+      "s": 0.333,
+      "l": 0.988,
+      "quality": "good"
+    },
+    "color_2": {
+      "expected": true,
+      "connected": true,
+      "rPulse": 647,
+      "gPulse": 1170,
+      "bPulse": 1151,
+      "r": 250,
+      "g": 246,
+      "b": 246,
+      "h": 0,
+      "s": 0.286,
+      "l": 0.973,
+      "quality": "good"
+    }
+  }
+}

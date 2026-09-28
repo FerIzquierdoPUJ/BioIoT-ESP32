@@ -2,146 +2,67 @@
 #include <az_iot.h>
 #include <mbedtls/md.h>
 #include <mbedtls/base64.h>
-#include <Arduino.h>
+#include <mbedtls/platform_util.h>
+#include <time.h>
 
-// =======================================================
-//   Helper: URL Encode (Para convertir +, /, = en %XX)
-// =======================================================
-void encodeURI(const char* src, char* dst) {
-  char hex[] = "0123456789ABCDEF";
-  while (*src) {
-    if (isalnum(*src) || *src == '-' || *src == '_' || *src == '.' || *src == '~') {
-      *dst++ = *src;
-    } else {
-      *dst++ = '%';
-      *dst++ = hex[(*src >> 4) & 0x0F];
-      *dst++ = hex[*src & 0x0F];
-    }
-    src++;
-  }
-  *dst = 0;
-}
-
-// =======================================================
-//   Base64 Decode Helper
-// =======================================================
-static size_t base64Decode(const char* input, uint8_t* output) {
-  size_t len = strlen(input);
-  size_t outLen = 0;
-  mbedtls_base64_decode(output, 64, &outLen, (const unsigned char*)input, len);
-  return outLen;
-}
-
-// =======================================================
-//   Base64 Encode Helper
-// =======================================================
-static size_t base64Encode(const uint8_t* input, size_t inputLen, char* output) {
-  size_t outLen = 0;
-  mbedtls_base64_encode((unsigned char*)output, 128, &outLen, input, inputLen);
-  output[outLen] = 0; // Null terminate
-  return outLen;
-}
-
-// =======================================================
-//   Constructor
-// =======================================================
 AzIoTSasToken::AzIoTSasToken(
-    az_iot_hub_client* client,
-    az_span deviceKey,
-    az_span signatureBuffer,
-    az_span sasTokenBuffer)
-{
-  this->client = client;
-  this->deviceKey = deviceKey;
-  this->signatureBuffer = signatureBuffer;
-  this->sasTokenBuffer = sasTokenBuffer;
-  this->expirationUnixTime = 0;
-  this->sasToken = AZ_SPAN_EMPTY;
-}
+    az_iot_hub_client* client, az_span deviceKey,
+    az_span signatureBuffer, az_span sasTokenBuffer)
+    : client(client), deviceKey(deviceKey), signatureBuffer(signatureBuffer),
+      sasTokenBuffer(sasTokenBuffer), sasToken(AZ_SPAN_EMPTY), expirationUnixTime(0) {}
 
-// =======================================================
-//   Generate SAS Token (CORREGIDO)
-// =======================================================
-int AzIoTSasToken::Generate(unsigned int expiryTimeInMinutes)
-{
-  expirationUnixTime = (uint32_t)(time(NULL) + expiryTimeInMinutes * 60);
+int AzIoTSasToken::Generate(unsigned int expiryTimeInMinutes) {
+  sasToken = AZ_SPAN_EMPTY;
+  const time_t now = time(NULL);
+  if (now < 1600000000 || expiryTimeInMinutes == 0 || expiryTimeInMinutes > 1440)
+    return -1;
+  expirationUnixTime = uint32_t(now + expiryTimeInMinutes * 60UL);
 
-  // 1. Obtener la firma cruda (resourceUri + \n + expiry)
-  // Nota: Azure SDK ya maneja la codificación del resourceURI internamente aquí
-  az_span signature = signatureBuffer;
-  az_result rc = az_iot_hub_client_sas_get_signature(
-      client,
-      expirationUnixTime,
-      signature,
-      &signature);
+  az_span signature;
+  if (az_result_failed(az_iot_hub_client_sas_get_signature(
+          client, expirationUnixTime, signatureBuffer, &signature))) return -1;
 
-  if (az_result_failed(rc)) {
-    Serial.println("❌ Error construyendo string para firma");
+  uint8_t decodedKey[64];
+  size_t decodedLength = 0;
+  int rc = mbedtls_base64_decode(decodedKey, sizeof(decodedKey), &decodedLength,
+                                az_span_ptr(deviceKey), az_span_size(deviceKey));
+  if (rc != 0 || decodedLength == 0) {
+    mbedtls_platform_zeroize(decodedKey, sizeof(decodedKey));
+    Serial.println("Device key no es Base64 valido.");
     return -1;
   }
 
-  // 2. Decodificar la Device Key (Base64 -> Bytes)
-  uint8_t decoded_key[64];
-  size_t decoded_key_len = base64Decode((const char*)az_span_ptr(deviceKey), decoded_key);
-
-  // 3. HMAC-SHA256
-  uint8_t hmac_result[32];
-  mbedtls_md_context_t ctx;
-  mbedtls_md_init(&ctx);
-  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
-  mbedtls_md_hmac_starts(&ctx, decoded_key, decoded_key_len);
-  mbedtls_md_hmac_update(&ctx, az_span_ptr(signatureBuffer), az_span_size(signature));
-  mbedtls_md_hmac_finish(&ctx, hmac_result);
-  mbedtls_md_free(&ctx);
-
-  // 4. Base64 Encode del resultado HMAC
-  char b64_hmac[128];
-  base64Encode(hmac_result, 32, b64_hmac);
-
-  // 5. URL ENCODE DE LA FIRMA (¡AQUÍ ESTABA EL ERROR!) 
-  // La firma Base64 tiene +, /, = que rompen la URL si no se escapan.
-  char encoded_signature[256];
-  encodeURI(b64_hmac, encoded_signature);
-
-  // 6. URL Encode del Resource URI también (Host/devices/id)
-  char resourceUri[128];
-  // Reconstruimos el resource URI que usa Azure SDK: "host/devices/id"
-  snprintf(resourceUri, sizeof(resourceUri), "%s/devices/%s", 
-           (char*)az_span_ptr(client->_internal.iot_hub_hostname),
-           (char*)az_span_ptr(client->_internal.device_id));
-  
-  char encoded_resourceUri[256];
-  encodeURI(resourceUri, encoded_resourceUri);
-
-  // 7. Construir Token Final
-  // SharedAccessSignature sr=<URL_ENCODED_URI>&sig=<URL_ENCODED_SIG>&se=<EXPIRY>
-  int written = snprintf(
-      (char*)az_span_ptr(sasTokenBuffer),
-      az_span_size(sasTokenBuffer),
-      "SharedAccessSignature sr=%s&sig=%s&se=%u",
-      encoded_resourceUri,
-      encoded_signature,
-      (unsigned int)expirationUnixTime);
-
-  if (written < 0) {
-    Serial.println("❌ Error formateando Token final");
+  uint8_t hmac[32];
+  const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (info == NULL) {
+    mbedtls_platform_zeroize(decodedKey, sizeof(decodedKey));
     return -1;
   }
+  rc = mbedtls_md_hmac(info, decodedKey, decodedLength,
+                       az_span_ptr(signature), az_span_size(signature), hmac);
+  mbedtls_platform_zeroize(decodedKey, sizeof(decodedKey));
+  if (rc != 0) return -1;
 
-  sasToken = az_span_create(az_span_ptr(sasTokenBuffer), written);
+  unsigned char base64Hmac[64];
+  size_t base64Length = 0;
+  rc = mbedtls_base64_encode(base64Hmac, sizeof(base64Hmac), &base64Length,
+                             hmac, sizeof(hmac));
+  mbedtls_platform_zeroize(hmac, sizeof(hmac));
+  if (rc != 0) return -1;
+
+  // El SDK codifica URI y firma una sola vez y comprueba el espacio disponible.
+  size_t passwordLength = 0;
+  az_result result = az_iot_hub_client_sas_get_password(
+      client, expirationUnixTime, az_span_create(base64Hmac, base64Length),
+      AZ_SPAN_EMPTY, reinterpret_cast<char*>(az_span_ptr(sasTokenBuffer)),
+      az_span_size(sasTokenBuffer), &passwordLength);
+  if (az_result_failed(result)) return -1;
+  sasToken = az_span_create(az_span_ptr(sasTokenBuffer), passwordLength);
   return 0;
 }
 
-// =======================================================
-//   IsExpired
-// =======================================================
-bool AzIoTSasToken::IsExpired() {
-  return time(NULL) >= expirationUnixTime;
+bool AzIoTSasToken::IsExpired(unsigned int withinSeconds) {
+  return time(NULL) + withinSeconds >= expirationUnixTime;
 }
 
-// =======================================================
-//   Get
-// =======================================================
-az_span AzIoTSasToken::Get() {
-  return sasToken;
-}
+az_span AzIoTSasToken::Get() { return sasToken; }
