@@ -6,9 +6,13 @@
 //  * bioiot_espnow_esp8266.cpp -> ESP8266 Arduino 3.1.2 (SDK NONOS espnow.h):
 //      recv_cb(u8* mac, u8* data, u8 len), send_cb(u8* mac, u8 status),
 //      roles, esp_now_set_kok() como PMK y clave LMK en esp_now_add_peer().
-// Siempre unicast cifrado. Si el cifrado no puede configurarse, begin()/addPeer()
-// fallan y NO se transmite en claro (salvo BIOIOT_ALLOW_UNENCRYPTED_ESPNOW=1,
-// opcion explicita de diagnostico, que se informa en STATUS/HELLO).
+// Unicast. Con BIOIOT_ALLOW_UNENCRYPTED_ESPNOW=0 el enlace usa cifrado CCMP
+// (PMK + LMK por enlace); si no puede configurarse, begin()/addPeer() fallan.
+// Con 1, las tramas ESP-NOW viajan SIN cifrar; el HMAC-SHA256 por enlace, el
+// systemId, la sesion por arranque y la ventana anti-replay siguen autenticando
+// cada trama, pero su contenido (mediciones, comandos) es legible por radio.
+// Se informa como "encrypted": false en status/diagnostico.
+// El valor DEBE ser el mismo en A, B y C: el modo es comun a todo el puerto de C.
 #include <stddef.h>
 #include <stdint.h>
 
@@ -16,7 +20,11 @@
 #include "bioiot_ring.h"
 
 #ifndef BIOIOT_ALLOW_UNENCRYPTED_ESPNOW
-#define BIOIOT_ALLOW_UNENCRYPTED_ESPNOW 0
+// 1 desde 2026-10-06 por decision del usuario: el enlace cifrado ESP8266 (B) <->
+// ESP32 (C) no entrega ninguna trama en hardware (B: rx 0, sin sesion) aunque
+// SYSTEM_ID, PMK, LMK, clave HMAC y MAC coinciden. Volver a 0 cuando se verifique
+// la interoperabilidad cifrada (docs/PRUEBAS.md, P1).
+#define BIOIOT_ALLOW_UNENCRYPTED_ESPNOW 1
 #endif
 
 #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
