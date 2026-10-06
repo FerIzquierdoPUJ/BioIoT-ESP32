@@ -25,6 +25,7 @@ const SensorInfo kSensors[kSensorCount] = {
     {"light_2", "lux", kNodeB, val::kLightCount},
     {"o2_gas_1", "%vol", kNodeB, val::kO2Count},
     {"o2_gas_2", "%vol", kNodeB, val::kO2Count},
+    {"temperature_b", "C", kNodeB, val::kTempCount},
 };
 const SensorInfo kUnknownSensor = {"unknown", nullptr, kNodeNone, 0};
 

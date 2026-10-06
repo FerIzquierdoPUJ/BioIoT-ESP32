@@ -17,6 +17,7 @@
 #include "CalibrationLogicB.h"
 #include "O2Logic.h"
 #include "SensorsB.h"
+#include "TempB.h"
 #include "WarmupPolicy.h"
 #include "node_b_config.h"
 
@@ -126,6 +127,7 @@ uint16_t defaultExpectedMask() {
   if (EXPECT_BH2_DEFAULT) m |= 1u << kSensorLight2;
   if (EXPECT_O2_1_DEFAULT) m |= 1u << kSensorO2Gas1;
   if (EXPECT_O2_2_DEFAULT) m |= 1u << kSensorO2Gas2;
+  if (EXPECT_TEMP_B_DEFAULT) m |= 1u << kSensorTemperatureB;
   return m;
 }
 // NVS siempre disponible; solo un registro de firmware mas nuevo bloquea escrituras.
@@ -204,6 +206,7 @@ uint32_t g_minFreeHeap = 0xFFFFFFFFu;
 
 I2CBusB g_bus;
 SensorsB g_sensors;
+TempSamplerB g_temp;
 
 CommandQueue<4> g_commands;
 CommandCache g_cmdCache;
@@ -269,6 +272,20 @@ TelemetryRecord o2Record(uint8_t i, uint32_t nowMs) {
   return rec;
 }
 
+TelemetryRecord tempRecord() {
+  const TempResultB& t = g_temp.result();
+  TelemetryRecord rec;
+  rec.sensor = kSensorTemperatureB;
+  rec.flags = uint16_t((t.connected ? kRecConnected : 0) | (expected(kSensorTemperatureB) ? kRecExpected : 0) |
+                       (t.sampled ? kRecObserved : 0));
+  rec.sampleUptimeMs = t.sampledAtMs;
+  rec.valueCount = val::kTempCount;
+  rec.vals[val::kTempRaw] = t.sampled ? t.raw : NAN;
+  rec.vals[val::kTempValue] = t.sampled && t.connected ? t.raw : NAN;  // sin calibracion propia
+  rec.quality = !t.sampled ? kQNotSampled : t.connected ? kQGood : kQDisconnected;
+  return rec;
+}
+
 void reportTelemetry(uint32_t nowMs) {
   TelemetryMsg t;
   t.snapshotId = ++g_snapshotId; t.part = 0; t.parts = 1;
@@ -276,6 +293,7 @@ void reportTelemetry(uint32_t nowMs) {
   t.records[t.recordCount++] = lightRecord(1);
   t.records[t.recordCount++] = o2Record(0, nowMs);
   t.records[t.recordCount++] = o2Record(1, nowMs);
+  t.records[t.recordCount++] = tempRecord();
   uint8_t buf[kMaxPayload];
   t.txUptimeMs = nowMs;
   const size_t n = encodeTelemetry(t, buf, sizeof(buf));
@@ -362,7 +380,7 @@ void processCommand(const PendingCommand& pc, uint32_t nowMs) {
     ConfigCmd cfg;
     if (!decodeConfig(pc.payload, pc.len, cfg)) return;
     const uint32_t interval = (cfg.present & 1) ? cfg.reportIntervalMs : g_reportIntervalMs;
-    const uint16_t mask = (cfg.present & 2) ? uint16_t(cfg.expectedMask & 0x1E00) : g_expectedMask;
+    const uint16_t mask = (cfg.present & 2) ? uint16_t(cfg.expectedMask & 0x3E00) : g_expectedMask;
     const bool ok = storageWritable() && persist(g_cal, interval, mask);
     if (ok) { g_reportIntervalMs = interval; g_expectedMask = mask; }
     res.outcome = ok ? kOutcomeApplied : kOutcomeRejected;
@@ -673,7 +691,18 @@ size_t buildDiagnosticJson(uint32_t nowMs) {
   JsonArray findings = doc["findings"].to<JsonArray>();
   const uint8_t s = g_diag.scope;
   writeSystem(doc["system"].to<JsonObject>(), nowMs);
-  if (s == kDiagAnalog || s == kDiagColor || s == kDiagTemperature) doc["not_applicable"] = true;
+  if (s == kDiagAnalog || s == kDiagColor) doc["not_applicable"] = true;
+  if (s == kDiagFull || s == kDiagTemperature) {
+    const TempResultB& t = g_temp.result();
+    JsonObject tb = doc["temperature_b"].to<JsonObject>();
+    tb["gpio"] = ONE_WIRE_BUS;
+    tb["sampled"] = t.sampled;
+    tb["connected"] = t.connected;
+    tb["device_count"] = t.deviceCount;
+    if (t.sampled && isfinite(t.raw)) tb["raw_c"] = t.raw; else tb["raw_c"] = nullptr;
+    tb["sampled_at_ms"] = t.sampledAtMs;
+    if (t.sampled && !t.connected) findings.add("temperature_b_disconnected");
+  }
   if (s == kDiagFull || s == kDiagI2c || s == kDiagRecover) writeI2C(doc["i2c"].to<JsonObject>(), findings, nowMs);
   if (s == kDiagQuick) {
     const TcaSelectResult iso = g_bus.disableAll();  // dos transacciones cortas, sin barrido
@@ -831,6 +860,8 @@ void nodeBSetup() {
   g_bus.disableAll();
   Serial.printf("TCA9548A en 0x%02X: %s\n", TCA_ADDR, g_bus.probe(TCA_ADDR).detected ? "detectado" : "NO detectado");
   g_sensors.begin(&g_bus, &g_warmup, &g_cal);
+  g_temp.begin();
+  Serial.printf("DS18B20 en GPIO%u: %u dispositivo(s).\n", unsigned(ONE_WIRE_BUS), unsigned(g_temp.result().deviceCount));
 
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
@@ -885,6 +916,7 @@ void nodeBLoop() {
     Serial.println("Nodo B midiendo sin enlace ESP-NOW (aprovisionamiento pendiente o error de radio).");
   }
   g_sensors.loop(millis());
+  g_temp.loop(millis());
   serviceAirCalibration(millis());
   serviceDiagnostics(millis());
   pollSerial(millis());

@@ -202,7 +202,7 @@ No hay conexiones UART ni de datos entre nodos: solo radio. Cada nodo necesita a
 | pH / CO2 #1 / CO2 #2 / Turbidez / DO / TDS | canales 15 / 14 / 13 / 3 / 12 / 11 | perfil por defecto; alternativa 0..5 ([DISCREPANCIAS.md](DISCREPANCIAS.md)) |
 | TCS3200 S0 / S1 / S2 / S3 (compartidos) | GPIO16 / 17 / 18 / 19 | S0=H, S1=L (escala 20 %) |
 | TCS3200 OUT #1 / OUT #2 | GPIO34 / 35 | solo entrada |
-| DS18B20 datos | **GPIO22** | pull-up de 4,7 kΩ a 3,3 V (v4 usaba GPIO23; `ONE_WIRE_BUS` en `node_a_config.h`) |
+| DS18B20 datos | GPIO23 | pull-up de 4,7 kΩ a 3,3 V |
 
 El acondicionamiento eléctrico (divisor del CO2 de 12 kΩ/22 kΩ, ganancia 8,5) y la escala ADC no cambian: las curvas siguen interpretando el mismo voltaje.
 
@@ -230,6 +230,7 @@ Mismo nodo B para C (misma identidad, protocolo, calibraciones O2 y warm-up). Se
 | DFR0576 (TCA9548A) | 0x77 (DIP A2/A1/A0=111) | |
 | Canal 0 / 1 | BH1750 #1 / #2 (0x23) | sin cambios |
 | Canal 2 / 3 | SEN0322 #1 / #2 (0x73) | sin cambios |
+| DS18B20 datos | **GPIO18** | pull-up de 4,7 kΩ a 3,3 V. Se publica como `temperature_b` |
 
 **Cambio de placa B sin regenerar claves:** las claves no dependen de la MAC.
 1. `BioIoT_NodeB_ESP32/node_secrets.h` es el mismo archivo que el de `BioIoT_NodeB_I2C` (claves del enlace B↔C y MAC del gateway, que no cambian).

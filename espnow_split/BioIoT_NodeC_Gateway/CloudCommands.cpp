@@ -135,6 +135,7 @@ const struct {
     {"dissolved_oxygen", kSensorDissolvedOxygen}, {"tds", kSensorTds}, {"temperature", kSensorTemperature},
     {"color_1", kSensorColor1}, {"color_2", kSensorColor2}, {"light_1", kSensorLight1},
     {"light_2", kSensorLight2}, {"o2_gas_1", kSensorO2Gas1}, {"o2_gas_2", kSensorO2Gas2},
+    {"temperature_b", kSensorTemperatureB},
 };
 }  // namespace
 

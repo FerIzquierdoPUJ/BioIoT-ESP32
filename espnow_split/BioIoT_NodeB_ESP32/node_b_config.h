@@ -13,6 +13,12 @@
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22
 
+// DS18B20 (OneWire) del nodo B, pull-up de 4,7 kOhm a 3,3 V. GPIO18: libre en esta
+// placa y no es pin de arranque. Se publica como sensors.temperature_b.
+#define ONE_WIRE_BUS 18
+#define EXPECT_TEMP_B_DEFAULT true
+#define NODE_B_TEMP_INTERVAL_MS 2000UL
+
 #define I2C_CLOCK_HZ 100000
 // Timeout de Wire (ms): el mismo de v4 en ESP32; acota el bloqueo con un bus colgado.
 #define I2C_TIMEOUT_MS 50

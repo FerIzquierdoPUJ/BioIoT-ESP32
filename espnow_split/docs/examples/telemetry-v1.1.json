@@ -274,16 +274,21 @@
     "temperature": {
       "expected": true,
       "connected": true,
-      "raw": 24.5,
-      "value": 24.87,
+      "raw": null,
+      "value": 24.98,
       "unit": "C",
       "quality": "good",
-      "node": "node_a",
+      "node": "node_a+node_b",
       "data_state": "fresh",
       "stale": false,
       "age_ms": 1100,
       "sampledAtUtc": "2026-09-21T14:13:18Z",
-      "calibration_revision": 0
+      "calibration_revision": 0,
+      "source": "average",
+      "sources": {
+        "node_a": 24.87,
+        "node_b": 25.1
+      }
     },
     "color_1": {
       "expected": true,
@@ -379,6 +384,20 @@
       "stale": false,
       "age_ms": 5320,
       "sampledAtUtc": "2026-09-21T14:13:14Z",
+      "calibration_revision": 0
+    },
+    "temperature_b": {
+      "expected": true,
+      "connected": true,
+      "raw": 25.1,
+      "value": 25.1,
+      "unit": "C",
+      "quality": "good",
+      "node": "node_b",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1020,
+      "sampledAtUtc": "2026-09-21T14:13:18Z",
       "calibration_revision": 0
     }
   },

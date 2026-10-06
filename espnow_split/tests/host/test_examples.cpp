@@ -64,11 +64,12 @@ TEST(generate_documentation_examples) {
   a1.recordCount = 2;
   // Nodo B: calentamiento de O2 en curso.
   TelemetryMsg b0;
-  b0.snapshotId = 31; b0.txUptimeMs = 150020; b0.recordCount = 4;
+  b0.snapshotId = 31; b0.txUptimeMs = 150020; b0.recordCount = 5;
   b0.records[0] = rec(kSensorLight1, kQGood, CE, 149000, {812.5f, NAN});
   b0.records[1] = rec(kSensorLight2, kQGood, CE, 149200, {790.0f, NAN});
   b0.records[2] = rec(kSensorO2Gas1, kQWarmingUp, CE | kRecI2cDetected | kRecWarming, 145000, {NAN, NAN, NAN, 0, 0, 0});
   b0.records[3] = rec(kSensorO2Gas2, kQWarmingUp, CE | kRecI2cDetected | kRecWarming, 145100, {NAN, NAN, NAN, 0, 0, 0});
+  b0.records[4] = rec(kSensorTemperatureB, kQGood, CE | kRecObserved, 149400, {25.1f, 25.1f});  // DS18B20 de B (ESP32)
   const int64_t rx = 600000;
   st.touch(kNodeA, rx, -48);
   st.touch(kNodeB, rx, -61);

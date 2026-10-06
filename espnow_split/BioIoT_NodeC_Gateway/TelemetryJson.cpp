@@ -1,5 +1,7 @@
 #include "TelemetryJson.h"
 
+#include "TemperatureMerge.h"
+
 #include <ArduinoJson.h>
 #include <math.h>
 #include <stdio.h>
@@ -81,7 +83,7 @@ void writeSensor(JsonObject o, uint8_t id, const SensorSample& s, uint8_t state,
         setNum(o["value"], v[val::kDoValue], 3);
       } else o["value"] = nullptr;
       break;
-    case kSensorTemperature:
+    case kSensorTemperature: case kSensorTemperatureB:
       if (fresh) {
         setNum(o["raw"], v[val::kTempRaw], 2);
         setNum(o["value"], v[val::kTempValue], 2);
@@ -323,6 +325,33 @@ void writeQuickDiagnostics(JsonObject o, const GatewayState& st, const GatewayIn
   o["health"] = warning ? "warning" : incomplete ? "unknown" : "ok";
 }
 
+// sensors.temperature: promedio de A y B si ambas son utilizables, si no la disponible.
+// Se conservan los campos de siempre; se anaden source y sources (aditivos).
+void writeTemperature(JsonObject o, const Snapshot& snap, const GatewayInfo& info) {
+  const SensorSample& a = snap.sensors[kSensorTemperature];
+  const SensorSample& b = snap.sensors[kSensorTemperatureB];
+  const uint8_t stA = snap.state[kSensorTemperature], stB = snap.state[kSensorTemperatureB];
+  const TempCombined t = combineTemperature(a, stA, b, stB);
+  if (t.source == TempSource::NodeB) {
+    writeSensor(o, kSensorTemperatureB, b, stB, snap, info);  // node = node_b
+  } else if (t.source == TempSource::Average) {
+    SensorSample m = a;  // expected/calibracion de A
+    m.vals[val::kTempValue] = t.value;
+    m.vals[val::kTempRaw] = NAN;  // dos sondas: no hay un "raw" unico
+    m.quality = kQGood;
+    if (b.sampleMonoMs < m.sampleMonoMs) m.sampleMonoMs = b.sampleMonoMs;  // edad: la mas antigua
+    writeSensor(o, kSensorTemperature, m, kSampleFresh, snap, info);
+    o["node"] = "node_a+node_b";
+  } else {
+    writeSensor(o, kSensorTemperature, a, stA, snap, info);  // como siempre (A o su estado)
+  }
+  const char* src = tempSourceName(t.source);
+  if (src) o["source"] = src; else o["source"] = nullptr;
+  JsonObject sources = o["sources"].to<JsonObject>();
+  setNum(sources["node_a"], t.haveA ? t.a : NAN, 2);
+  setNum(sources["node_b"], t.haveB ? t.b : NAN, 2);
+}
+
 void appendAlert(JsonArray alerts, const char* name, const char* suffix) {
   char buf[48];
   snprintf(buf, sizeof(buf), "%s%s", name, suffix);
@@ -391,8 +420,11 @@ void fillTelemetryJson(JsonDocument& doc, const Snapshot& snap, const GatewaySta
   writeActuators(doc["actuators"].to<JsonObject>(), snap.actuators, info);
   writeQuickDiagnostics(doc["diagnostics"].to<JsonObject>(), st, info);
   JsonObject sensors = doc["sensors"].to<JsonObject>();
-  for (uint8_t id = 0; id < kSensorCount; ++id)
-    writeSensor(sensors[sensorInfo(id).key].to<JsonObject>(), id, snap.sensors[id], snap.state[id], snap, info);
+  for (uint8_t id = 0; id < kSensorCount; ++id) {
+    JsonObject o = sensors[sensorInfo(id).key].to<JsonObject>();
+    if (id == kSensorTemperature) writeTemperature(o, snap, info);
+    else writeSensor(o, id, snap.sensors[id], snap.state[id], snap, info);
+  }
   // Metadatos 1.1.
   char msgId[80];
   snprintf(msgId, sizeof(msgId), "%s:%08lx:%lu", info.deviceId, (unsigned long)info.bootId, (unsigned long)snap.seq);

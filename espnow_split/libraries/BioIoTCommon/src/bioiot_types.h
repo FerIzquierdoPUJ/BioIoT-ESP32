@@ -21,8 +21,11 @@ enum SensorId : uint8_t {
   kSensorLight2 = 10,
   kSensorO2Gas1 = 11,
   kSensorO2Gas2 = 12,
+  // DS18B20 del nodo B (solo BioIoT_NodeB_ESP32, GPIO18). El gateway publica en
+  // sensors.temperature la combinacion de temperature (A) y temperature_b (B).
+  kSensorTemperatureB = 13,
 };
-constexpr uint8_t kSensorCount = 13;
+constexpr uint8_t kSensorCount = 14;
 constexpr uint8_t kMaxRecordValues = 9;
 
 // Orden de valores por sensor (indices de TelemetryRecord::vals).
@@ -34,7 +37,7 @@ constexpr uint8_t kCo2Raw = 0, kCo2Voltage = 1, kCo2Value = 2, kCo2ModuleV = 3, 
                   kCo2Count = 5;
 // dissolved_oxygen
 constexpr uint8_t kDoRaw = 0, kDoVoltage = 1, kDoSatPct = 2, kDoValue = 3, kDoCount = 4;
-// temperature
+// temperature, temperature_b
 constexpr uint8_t kTempRaw = 0, kTempValue = 1, kTempCount = 2;
 // color_1, color_2
 constexpr uint8_t kColorRPulse = 0, kColorGPulse = 1, kColorBPulse = 2, kColorR = 3, kColorG = 4,
