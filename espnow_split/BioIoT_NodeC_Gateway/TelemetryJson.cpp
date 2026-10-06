@@ -232,7 +232,7 @@ void writeActuators(JsonObject o, const ActuatorState& a, const GatewayInfo& inf
   l["dutyR"] = a.duty[0]; l["dutyG"] = a.duty[1]; l["dutyB"] = a.duty[2]; l["expiresAt"] = a.ledExpiresAt;
   l["source"] = a.ledSource; l["locked"] = a.ledLocked;
   JsonObject last = o["lastCommand"].to<JsonObject>();
-  last["commandId"] = a.lastCommandId; last["accepted"] = a.lastAccepted; last["reason"] = a.lastReason;
+  last["commandId"] = static_cast<const char*>(a.lastCommandId); last["accepted"] = a.lastAccepted; last["reason"] = a.lastReason;
   JsonObject p = o["local_program"].to<JsonObject>();
   p["enabled"] = a.programEnabled; p["valid"] = a.programValid;
 }
@@ -357,8 +357,7 @@ int64_t utcForMono(const GatewayInfo& info, int64_t mono) {
   return info.utcMs - (info.nowMono - mono);
 }
 
-size_t buildTelemetryJson(const Snapshot& snap, const GatewayState& st, const GatewayInfo& info, char* out, size_t cap) {
-  JsonDocument doc;
+void fillTelemetryJson(JsonDocument& doc, const Snapshot& snap, const GatewayState& st, const GatewayInfo& info) {
   header(doc, info, nullptr);
   // timestampUtc = instante de la instantanea (v4: inicio del ciclo de lectura).
   int64_t takenUtc = snap.takenUtcMs;
@@ -415,27 +414,34 @@ size_t buildTelemetryJson(const Snapshot& snap, const GatewayState& st, const Ga
   g["espnow_channel_changes"] = info.espnowChannelChanges;
   g["mqtt_qos"] = 0;
   writeNodes(doc["nodes"].to<JsonObject>(), st, info, snap.takenMono);
+}
+
+size_t buildTelemetryJson(const Snapshot& snap, const GatewayState& st, const GatewayInfo& info, char* out, size_t cap) {
+  JsonDocument doc;
+  fillTelemetryJson(doc, snap, st, info);
   return finish(doc, out, cap);
+}
+
+void fillActuatorEvent(JsonDocument& doc, const ActuatorState& a, const GatewayInfo& info) {
+  header(doc, info, "actuator_state");
+  setUtc(doc["timestampUtc"], info.utcValid ? info.utcMs : 0);
+  writeActuators(doc["actuators"].to<JsonObject>(), a, info);
 }
 
 size_t buildActuatorEvent(const ActuatorState& a, const GatewayInfo& info, char* out, size_t cap) {
   JsonDocument doc;
-  header(doc, info, "actuator_state");
-  setUtc(doc["timestampUtc"], info.utcValid ? info.utcMs : 0);
-  writeActuators(doc["actuators"].to<JsonObject>(), a, info);
+  fillActuatorEvent(doc, a, info);
   return finish(doc, out, cap);
 }
 
-size_t buildCalibrationAck(const TrackedCommand& c, const GatewayState& st, const GatewayInfo& info, char* out,
-                           size_t cap) {
-  JsonDocument doc;
+void fillCalibrationAck(JsonDocument& doc, const TrackedCommand& c, const GatewayState& st, const GatewayInfo& info) {
   header(doc, info, c.msgType == uint8_t(MsgType::Calibration) ? "calibration_ack" : "command_result");
-  doc["sensor"] = c.sensor;
+  doc["sensor"] = static_cast<const char*>(c.sensor);  // copia: se serializa fuera del mutex
   doc["node"] = nodeKey(c.node);
   doc["state"] = cmdStateName(c.state);  // pending/delivered/applied/rejected/failed/expired/timeout/node_rebooted
   // status v4 cuando el nodo respondio; si no, el estado del gateway.
   doc["status"] = c.status <= kMaxStatusCode ? statusName(c.status) : cmdStateName(c.state);
-  if (c.hasCloudId) doc["commandId"] = c.cloudId; else doc["commandId"] = nullptr;
+  if (c.hasCloudId) doc["commandId"] = static_cast<const char*>(c.cloudId); else doc["commandId"] = nullptr;
   if (c.status <= kMaxStatusCode) {
     doc["calibration_version"] = c.nodeRevision;  // revision del nodo propietario
     doc["sensor_revision"] = c.sensorRevision;
@@ -452,12 +458,15 @@ size_t buildCalibrationAck(const TrackedCommand& c, const GatewayState& st, cons
   if (c.groupId) doc["group_id"] = c.groupId;
   setUtc(doc["timestampUtc"], info.utcValid ? info.utcMs : 0);
   doc["physical_calibration_confirmed"] = false;
+}
+
+size_t buildCalibrationAck(const TrackedCommand& c, const GatewayState& st, const GatewayInfo& info, char* out, size_t cap) {
+  JsonDocument doc;
+  fillCalibrationAck(doc, c, st, info);
   return finish(doc, out, cap);
 }
 
-size_t buildGroupSummary(uint32_t groupId, const char* kind, const char* commandId, const GatewayState& st,
-                         const GatewayInfo& info, uint8_t applied, uint8_t total, char* out, size_t cap) {
-  JsonDocument doc;
+void fillGroupSummary(JsonDocument& doc, uint32_t groupId, const char* kind, const char* commandId, const GatewayState& st, const GatewayInfo& info, uint8_t applied, uint8_t total) {
   header(doc, info, "calibration_ack");
   doc["sensor"] = "all";
   doc["group"] = kind;
@@ -469,12 +478,15 @@ size_t buildGroupSummary(uint32_t groupId, const char* kind, const char* command
   if (commandId && *commandId) doc["commandId"] = commandId; else doc["commandId"] = nullptr;
   setUtc(doc["timestampUtc"], info.utcValid ? info.utcMs : 0);
   doc["physical_calibration_confirmed"] = false;
+}
+
+size_t buildGroupSummary(uint32_t groupId, const char* kind, const char* commandId, const GatewayState& st, const GatewayInfo& info, uint8_t applied, uint8_t total, char* out, size_t cap) {
+  JsonDocument doc;
+  fillGroupSummary(doc, groupId, kind, commandId, st, info, applied, total);
   return finish(doc, out, cap);
 }
 
-size_t buildCalibrationExport(const GatewayState& st, const GatewayInfo& info, const char* commandId, char* out,
-                              size_t cap) {
-  JsonDocument doc;
+void fillCalibrationExport(JsonDocument& doc, const GatewayState& st, const GatewayInfo& info, const char* commandId) {
   header(doc, info, "calibration_export");
   if (commandId && *commandId) doc["commandId"] = commandId; else doc["commandId"] = nullptr;
   char iso[25] = "";
@@ -485,12 +497,16 @@ size_t buildCalibrationExport(const GatewayState& st, const GatewayInfo& info, c
                          a.calValid ? &a.calA : nullptr, b.calValid ? &b.calB : nullptr);
   doc["node_a_available"] = a.calValid;
   doc["node_b_available"] = b.calValid;
+}
+
+size_t buildCalibrationExport(const GatewayState& st, const GatewayInfo& info, const char* commandId, char* out, size_t cap) {
+  JsonDocument doc;
+  fillCalibrationExport(doc, st, info, commandId);
   return finish(doc, out, cap);
 }
 
-size_t buildDiagnosticReport(const GatewayState& st, const GatewayInfo& info, char* out, size_t cap) {
+void fillDiagnosticReport(JsonDocument& doc, const GatewayState& st, const GatewayInfo& info) {
   const DiagSession& d = st.diag;
-  JsonDocument doc;
   header(doc, info, "diagnostic_report");
   doc["scope"] = diagScopeName(d.scope);
   doc["report_id"] = d.id;
@@ -542,18 +558,26 @@ size_t buildDiagnosticReport(const GatewayState& st, const GatewayInfo& info, ch
   }
   assessment["severity"] = findings.size() ? "warning" : "ok";
   assessment["physical_fault_confirmed"] = false;
+}
+
+size_t buildDiagnosticReport(const GatewayState& st, const GatewayInfo& info, char* out, size_t cap) {
+  JsonDocument doc;
+  fillDiagnosticReport(doc, st, info);
   return finish(doc, out, cap);
 }
 
-size_t buildRejection(const char* type, const char* action, const char* status, const char* commandId,
-                      const GatewayInfo& info, char* out, size_t cap) {
-  JsonDocument doc;
+void fillRejection(JsonDocument& doc, const char* type, const char* action, const char* status, const char* commandId, const GatewayInfo& info) {
   header(doc, info, type);
   doc["action"] = action;
   doc["state"] = "rejected";
   doc["status"] = status;
   if (commandId && *commandId) doc["commandId"] = commandId; else doc["commandId"] = nullptr;
   setUtc(doc["timestampUtc"], info.utcValid ? info.utcMs : 0);
+}
+
+size_t buildRejection(const char* type, const char* action, const char* status, const char* commandId, const GatewayInfo& info, char* out, size_t cap) {
+  JsonDocument doc;
+  fillRejection(doc, type, action, status, commandId, info);
   return finish(doc, out, cap);
 }
 

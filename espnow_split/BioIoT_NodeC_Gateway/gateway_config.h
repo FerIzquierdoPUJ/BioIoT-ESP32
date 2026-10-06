@@ -102,7 +102,13 @@
 #define COMMAND_RESULT_TIMEOUT_MS 30000UL    // espera de resultado tras ACK
 #define DIAG_TIMEOUT_MS 100000UL             // escaneo I2C completo de B puede tardar ~60-90 s
 #define TIME_SYNC_INTERVAL_MS 60000UL
-#define MQTT_PACKET_SIZE 24576               // diagnostico agregado <= ~14 KB
+#define MQTT_PACKET_SIZE 24576               // maximo JSON publicado (diagnostico agregado <= ~14 KB)
+// Lo saliente se escribe por trozos (sin buffer del tamano del mensaje); el buffer de
+// PubSubClient solo guarda lo entrante: el C2D mas grande (calibration_import con una
+// exportacion) ronda 2 KB, mas el topic con propiedades.
+#define MQTT_RX_BUFFER_SIZE 8192
+#define MQTT_STREAM_CHUNK 1024               // un registro TLS por trozo
+#define PUBLISH_NOMEM_RETRY_MS 5000UL        // JSON sin heap: se conserva y se reintenta
 #define LOOP_WDT_TIMEOUT_MS 120000UL         // v4
 #define LOCAL_TASK_WDT_TIMEOUT_MS 10000UL
 

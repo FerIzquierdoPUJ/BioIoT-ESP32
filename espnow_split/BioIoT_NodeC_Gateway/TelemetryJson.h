@@ -3,6 +3,7 @@
 // todos los campos 1.0 se conservan; cambios inevitables documentados en
 // docs/MIGRACION.md (calibration.version=null, connected=null y calidades
 // stale/node_offline cuando el dato no es actual).
+#include <ArduinoJson.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -53,5 +54,18 @@ size_t buildCalibrationExport(const GatewayState& st, const GatewayInfo& info, c
 size_t buildDiagnosticReport(const GatewayState& st, const GatewayInfo& info, char* out, size_t cap);
 size_t buildRejection(const char* type, const char* action, const char* status, const char* commandId,
                       const GatewayInfo& info, char* out, size_t cap);
+
+// Las mismas estructuras en un JsonDocument, sin buffer de salida: el gateway las
+// envia por trozos a MQTT (PublishStream.h). Los textos del estado se copian, asi que
+// el documento puede serializarse sin el mutex. doc.overflowed() => falta de heap.
+void fillTelemetryJson(JsonDocument& doc, const Snapshot& snap, const GatewayState& st, const GatewayInfo& info);
+void fillActuatorEvent(JsonDocument& doc, const ActuatorState& a, const GatewayInfo& info);
+void fillCalibrationAck(JsonDocument& doc, const TrackedCommand& c, const GatewayState& st, const GatewayInfo& info);
+void fillGroupSummary(JsonDocument& doc, uint32_t groupId, const char* kind, const char* commandId,
+                      const GatewayState& st, const GatewayInfo& info, uint8_t applied, uint8_t total);
+void fillCalibrationExport(JsonDocument& doc, const GatewayState& st, const GatewayInfo& info, const char* commandId);
+void fillDiagnosticReport(JsonDocument& doc, const GatewayState& st, const GatewayInfo& info);
+void fillRejection(JsonDocument& doc, const char* type, const char* action, const char* status, const char* commandId,
+                   const GatewayInfo& info);
 
 }  // namespace gw

@@ -28,6 +28,7 @@
 #include "CloudCommands.h"
 #include "GatewayState.h"
 #include "MemoryDiagnostics.h"
+#include "PublishStream.h"
 #include "StartupResources.h"
 #include "TelemetryJson.h"
 #include "gateway_config.h"
@@ -147,7 +148,8 @@ AzureLink g_azure;
 uint32_t g_rebootAtMs = 0;
 uint32_t g_lastPublishMs = 0;
 uint32_t g_minFreeHeap = 0xFFFFFFFF;
-char* g_pub = nullptr;
+uint8_t* g_pub = nullptr;  // trozo de envio MQTT (MQTT_STREAM_CHUNK), no el mensaje entero
+uint32_t g_pubRetryAtMs = 0, g_jsonNoMemory = 0, g_jsonTooLarge = 0;
 LineAssembler<512> g_serialLine;
 
 uint8_t nodeIndex(uint8_t node) { return node == kNodeB ? 1 : 0; }
@@ -662,15 +664,34 @@ GatewayInfo makeInfo() {
   return i;
 }
 
-bool publishBuffer(size_t n, const char* what) {
-  if (!n) {
-    Serial.printf("%s: JSON no generado (memoria/tamano).\n", what);
-    return true;  // no reintentar indefinidamente un JSON imposible
+// true = elemento terminado (publicado, o descartado por exceder el contrato);
+// false = conservarlo y reintentar. Se llama sin el mutex: el documento ya copio los
+// textos del estado (TelemetryJson.h).
+bool publishDoc(JsonDocument& doc, const char* what) {
+  const size_t n = doc.overflowed() ? 0 : measureJson(doc);
+  switch (jsonVerdict(doc.overflowed(), n, MQTT_PACKET_SIZE)) {
+    case JsonVerdict::RetryNoMemory:
+      // Falta de heap pasajera (p. ej. durante TLS): nunca se pierde la muestra.
+      g_jsonNoMemory++;
+      g_pubRetryAtMs = millis() + PUBLISH_NOMEM_RETRY_MS;
+      if (!g_pubRetryAtMs) g_pubRetryAtMs = 1;
+      Serial.printf("%s: JSON sin memoria; se conserva y se reintenta en %lu s.\n", what,
+                    (unsigned long)(PUBLISH_NOMEM_RETRY_MS / 1000));
+      logInternalHeap("json_no_memory");
+      return false;
+    case JsonVerdict::DropTooLarge:
+      g_jsonTooLarge++;
+      Serial.printf("%s: JSON de %u B excede %u B; se descarta.\n", what, unsigned(n), unsigned(MQTT_PACKET_SIZE));
+      return true;
+    case JsonVerdict::Publish:
+      break;
   }
+  g_pubRetryAtMs = 0;
   Serial.printf("%s: %u bytes\n", what, unsigned(n));
-  Serial.println(g_pub);
+  serializeJson(doc, Serial);
+  Serial.println();
   if (!g_azure.mqttConnected()) return false;
-  const bool ok = g_azure.publish(g_pub, n);
+  const bool ok = g_azure.publishJson(doc, n, g_pub, MQTT_STREAM_CHUNK);
   Serial.println(ok ? "Publicado (QoS 0: aceptado por la biblioteca, sin confirmacion de IoT Hub)." : "Error publicando.");
   return ok;
 }
@@ -709,8 +730,10 @@ void publishPending() {
     Lock l;
     if (g_state->diag.ready) {
       const GatewayInfo info = makeInfo();
-      const size_t n = buildDiagnosticReport(*g_state, info, g_pub, MQTT_PACKET_SIZE);
-      Serial.println(n ? g_pub : "Diagnostico: informe demasiado grande.");
+      JsonDocument doc;
+      fillDiagnosticReport(doc, *g_state, info);
+      if (doc.overflowed()) Serial.println("Diagnostico: sin memoria para el informe JSON.");
+      else { serializeJson(doc, Serial); Serial.println(); }
       if (g_state->diag.fromSerial || monoMs() - g_state->diag.startMono > int64_t(GATEWAY_EVENT_MAX_AGE_MS)) {
         g_state->diag.active = false;
         g_state->diag.ready = false;
@@ -719,6 +742,7 @@ void publishPending() {
     return;
   }
   if (nowMs - g_lastPublishMs < 250) return;
+  if (g_pubRetryAtMs && int32_t(nowMs - g_pubRetryAtMs) < 0) return;  // espera tras falta de heap
   g_lastPublishMs = nowMs;
   const GatewayInfo info = makeInfo();
   if (ESP.getMaxAllocHeap() < 30000) {
@@ -729,9 +753,10 @@ void publishPending() {
   {
     Lock l;
     if (g_actReportPending) {
-      const size_t n = buildActuatorEvent(g_actShared, info, g_pub, MQTT_PACKET_SIZE);
+      JsonDocument doc;
+      fillActuatorEvent(doc, g_actShared, info);
       xSemaphoreGive(g_lock);
-      const bool ok = publishBuffer(n, "actuator_state");
+      const bool ok = publishDoc(doc, "actuator_state");
       xSemaphoreTake(g_lock, portMAX_DELAY);
       if (ok) g_actReportPending = false;
       return;
@@ -742,10 +767,11 @@ void publishPending() {
     Lock l;
     TrackedCommand* t = g_state->commands.nextToPublish();
     if (t) {
-      const size_t n = buildCalibrationAck(*t, *g_state, info, g_pub, MQTT_PACKET_SIZE);
+      JsonDocument doc;
+      fillCalibrationAck(doc, *t, *g_state, info);
       const uint32_t cmdId = t->cmdId;
       xSemaphoreGive(g_lock);
-      const bool ok = publishBuffer(n, "calibration_ack");
+      const bool ok = publishDoc(doc, "calibration_ack");
       xSemaphoreTake(g_lock, portMAX_DELAY);
       TrackedCommand* again = g_state->commands.find(cmdId);
       if (ok && again) again->needsPublish = false;
@@ -755,46 +781,50 @@ void publishPending() {
       if (!g.used) continue;
       uint8_t applied, total;
       if (!g_state->commands.groupFinal(g.groupId, applied, total)) continue;
-      const size_t n = buildGroupSummary(g.groupId, g.kind, g.commandId, *g_state, info, applied, total, g_pub, MQTT_PACKET_SIZE);
+      JsonDocument doc;
+      fillGroupSummary(doc, g.groupId, g.kind, g.commandId, *g_state, info, applied, total);
       xSemaphoreGive(g_lock);
-      const bool ok = publishBuffer(n, "calibration_ack (grupo)");
+      const bool ok = publishDoc(doc, "calibration_ack (grupo)");
       xSemaphoreTake(g_lock, portMAX_DELAY);
       if (ok) g.used = false;
       return;
     }
     if (g_rejection.pending) {
-      const size_t n = buildRejection(g_rejection.type, g_rejection.action, g_rejection.status, g_rejection.commandId,
-                                      info, g_pub, MQTT_PACKET_SIZE);
+      JsonDocument doc;
+      fillRejection(doc, g_rejection.type, g_rejection.action, g_rejection.status, g_rejection.commandId, info);
       xSemaphoreGive(g_lock);
-      const bool ok = publishBuffer(n, "rechazo");
+      const bool ok = publishDoc(doc, "rechazo");
       xSemaphoreTake(g_lock, portMAX_DELAY);
       if (ok) g_rejection.pending = false;
       return;
     }
     if (g_export.pending) {
-      const size_t n = buildCalibrationExport(*g_state, info, g_export.commandId, g_pub, MQTT_PACKET_SIZE);
+      JsonDocument doc;
+      fillCalibrationExport(doc, *g_state, info, g_export.commandId);
       xSemaphoreGive(g_lock);
-      const bool ok = publishBuffer(n, "calibration_export");
+      const bool ok = publishDoc(doc, "calibration_export");
       xSemaphoreTake(g_lock, portMAX_DELAY);
       if (ok) g_export.pending = false;
       return;
     }
     // 3. Informe de diagnostico agregado.
     if (g_state->diag.ready) {
-      const size_t n = buildDiagnosticReport(*g_state, info, g_pub, MQTT_PACKET_SIZE);
+      JsonDocument doc;
+      fillDiagnosticReport(doc, *g_state, info);
       xSemaphoreGive(g_lock);
-      const bool ok = publishBuffer(n, "diagnostic_report");
+      const bool ok = publishDoc(doc, "diagnostic_report");
       xSemaphoreTake(g_lock, portMAX_DELAY);
-      if (ok || !n) { g_state->diag.active = false; g_state->diag.ready = false; }
+      if (ok) { g_state->diag.active = false; g_state->diag.ready = false; }
       return;
     }
     // 4. Telemetria: la instantanea mas antigua pendiente (conserva su instante original).
     Snapshot* s = g_state->oldestUnpublished();
     if (s) {
-      const size_t n = buildTelemetryJson(*s, *g_state, info, g_pub, MQTT_PACKET_SIZE);
+      JsonDocument doc;
+      fillTelemetryJson(doc, *s, *g_state, info);
       const uint32_t seq = s->seq;
       xSemaphoreGive(g_lock);
-      const bool ok = publishBuffer(n, "Telemetria");
+      const bool ok = publishDoc(doc, "Telemetria");
       xSemaphoreTake(g_lock, portMAX_DELAY);
       // Se marca por seq: la instantanea pudo sobrescribirse durante el publish.
       Snapshot* again = g_state->oldestUnpublished();
@@ -839,6 +869,8 @@ void printStatus() {
   doc["startup_state"] = "ready";
   doc["startup_failure"] = "none";
   doc["publish_buffer_ready"] = g_pub != nullptr;
+  doc["json_no_memory"] = g_jsonNoMemory;  // reintentados, no perdidos
+  doc["json_too_large"] = g_jsonTooLarge;  // descartados
   doc["azure_enabled"] = g_azure.azureEnabled();
   char mac[18];
   if (readStaMacText(mac)) doc["sta_mac"] = mac;
@@ -924,7 +956,7 @@ struct StartupOps {
     return g_state != nullptr;
   }
   bool createPublishBuffer() {
-    g_pub = static_cast<char*>(malloc(MQTT_PACKET_SIZE));
+    g_pub = static_cast<uint8_t*>(malloc(MQTT_STREAM_CHUNK));
     logInternalHeap("after_publish_buffer");
     if (!g_pub) Serial.println("Sin memoria para el buffer de publicacion: Azure deshabilitado; operacion local conservada.");
     return g_pub != nullptr;
@@ -966,7 +998,7 @@ void nodeCSetup() {
   Serial.println("\n===== BioIoT Nodo C (gateway ESP-NOW + Azure + actuadores) =====");
   logInternalHeap("setup_entry");
   Serial.printf("Memoria solicitada: GatewayState=%u, publicacion=%u, cola=4x%u, pila bioiot_local=8192, pila loop=%u, pila IDF main=%u.\n",
-                unsigned(sizeof(GatewayState)), unsigned(MQTT_PACKET_SIZE), unsigned(sizeof(Request)),
+                unsigned(sizeof(GatewayState)), unsigned(MQTT_STREAM_CHUNK), unsigned(sizeof(Request)),
                 unsigned(getArduinoLoopTaskStackSize()), unsigned(ESP_TASK_MAIN_STACK));
   StartupOps resources;
   g_startupFailure = allocateStartupResources(resources);

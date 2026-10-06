@@ -16,6 +16,7 @@
 #include "azure_ca.h"
 #include "gateway_config.h"
 #include "MemoryDiagnostics.h"
+#include "PublishStream.h"
 
 #if __has_include("iot_configs.h")
 #include "iot_configs.h"
@@ -54,6 +55,10 @@ class GatewayPortal : public WiFiManager {
   GatewayPortal() { _disableSTAConn = false; }
 };
 GatewayPortal* portal = nullptr;
+
+bool mqttSink(void* ctx, const uint8_t* data, size_t len) {
+  return static_cast<PubSubClient*>(ctx)->write(data, len) == len;
+}
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Solo se interpreta y encola; PubSubClient envia el PUBACK al volver (v4).
@@ -116,7 +121,8 @@ bool AzureLink::initAzure() {
     return false;
   }
   mqttClient.setServer(IOT_HUB_HOSTNAME, 8883);
-  if (!mqttClient.setBufferSize(MQTT_PACKET_SIZE)) {
+  // Solo para lo entrante (C2D) y cabeceras: lo saliente se escribe por trozos.
+  if (!mqttClient.setBufferSize(MQTT_RX_BUFFER_SIZE)) {
     Serial.println("Sin memoria para el buffer MQTT; Azure deshabilitado.");
     return false;
   }
@@ -374,14 +380,28 @@ void AzureLink::loop() {
   mqttClient.loop();
 }
 
-bool AzureLink::publish(const char* payload, size_t len) {
-  if (!mqttClient.connected()) return false;
-  if (5 + 2 + strlen(telemetryTopicBuf) + len > MQTT_PACKET_SIZE) {
+bool AzureLink::publishJson(const JsonDocument& doc, size_t len, uint8_t* chunk, size_t chunkCap) {
+  if (!mqttClient.connected() || !chunk || !chunkCap) return false;
+  if (!len || len > MQTT_PACKET_SIZE) {
     publishTooLarge++;
-    Serial.println("Payload excede el buffer MQTT; no se envia JSON truncado.");
+    Serial.println("JSON fuera del tamano maximo; no se envia.");
     return false;
   }
-  const bool ok = mqttClient.publish(telemetryTopicBuf, reinterpret_cast<const uint8_t*>(payload), unsigned(len), false);
-  if (ok) publishOk++; else publishFail++;
+  if (!mqttClient.beginPublish(telemetryTopicBuf, unsigned(len), false)) {
+    publishFail++;
+    return false;
+  }
+  gw::ChunkWriter w(chunk, chunkCap, mqttSink, &mqttClient);
+  const size_t written = serializeJson(doc, w);
+  const bool ok = w.flush() && written == len && mqttClient.endPublish();
+  if (ok) {
+    publishOk++;
+  } else {
+    // El paquete MQTT anuncio `len` bytes y no se completo: la sesion queda
+    // desincronizada. Se cierra; loop() reconecta de forma espaciada.
+    publishFail++;
+    mqttClient.disconnect();
+    Serial.printf("Publicacion incompleta (%u de %u B): MQTT reiniciado.\n", unsigned(written), unsigned(len));
+  }
   return ok;
 }

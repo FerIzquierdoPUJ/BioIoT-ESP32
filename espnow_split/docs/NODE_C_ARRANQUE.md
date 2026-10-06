@@ -216,3 +216,40 @@ están instrumentados. Las inyecciones de fallos de reserva se comprobaron en PC
 no mediante agotamiento artificial de memoria de la placa. La prueba de arranque
 es satisfactoria; esta revisión no certifica estabilidad prolongada ni todos los
 escenarios de producción.
+
+## Publicación sin buffer de mensaje (2026-10-06)
+
+Síntoma en placa: `Telemetria: JSON no generado (memoria/tamano).` El JSON de
+telemetría ocupa ~7,3 KB y el buffer 24 KB, así que el tamaño no era la causa:
+`finish()` devolvía 0 porque ArduinoJson no obtenía heap (`doc.overflowed()`).
+Medido en PC en 32 bits, el documento de telemetría pide como máximo ~10,8 KB en
+368 reservas de ≤ 1 KB. Con ~48 KB libres antes de TLS, más la sesión mbedTLS y
+dos buffers de 24 KB con el mismo contenido (`g_pub` y el de PubSubClient), el
+margen desaparecía. Además, `publishBuffer()` marcaba la muestra como publicada:
+**se perdía**.
+
+Corrección:
+
+| Antes | Ahora |
+| --- | --- |
+| `g_pub` de 24 576 B con el JSON entero | Trozo de envío de 1024 B (`MQTT_STREAM_CHUNK`) |
+| PubSubClient con buffer de 24 576 B (copia del JSON) | 8192 B solo para lo entrante (`MQTT_RX_BUFFER_SIZE`; el C2D mayor ronda 2 KB) |
+| `publish(topic, buffer)` | `beginPublish` + `serializeJson` por trozos de 1 KB + `endPublish` (un registro TLS por trozo) |
+| Sin heap ⇒ muestra descartada | Sin heap ⇒ se conserva, `json_no_memory`++, reintento a los 5 s (`PUBLISH_NOMEM_RETRY_MS`) con log `HEAP json_no_memory` |
+| — | Solo un JSON > 24 576 B se descarta (`json_too_large`) |
+
+Heap liberado: unos **40 KB** (24 576 − 1024 + 24 576 − 8192). El tamaño máximo
+publicado no cambia (24 576 B). Los textos del estado que ArduinoJson guardaría por
+puntero (`char[N]` de un objeto `const`: `cloudId`, `sensor`, `lastCommandId`) se
+copian, así el documento se serializa sin el mutex y la tarea local no se bloquea
+durante el envío TLS. Si el envío se corta a mitad, MQTT se cierra (el paquete
+anunció su longitud) y `loop()` reconecta. `status` añade `json_no_memory` y
+`json_too_large`.
+
+Pruebas de PC (`tests/host/test_publish_stream.cpp`, 5): envío por trozos idéntico
+byte a byte al JSON completo con un envío por KB; fallo del destino a mitad
+detectado; veredicto memoria ⇒ reintento y tamaño ⇒ descarte; documento sin heap
+(asignador agotado) no descarta el elemento; textos copiados antes de soltar el
+mutex. Compilación de C con `min_spiffs`: 1 251 069 B (63 %), 66 172 B estáticos,
+sin advertencias. **Pendiente en placa:** medir `HEAP after_mqtt_tls_connect` y
+confirmar que `Telemetria: N bytes` + `Publicado` sustituyen al error.

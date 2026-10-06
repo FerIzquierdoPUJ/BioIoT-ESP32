@@ -91,6 +91,10 @@ Las 5 pruebas previas de doble ranura (`store_*`) siguen pasando. La única adve
 
 Estas pruebas modelan la radio. No sustituyen la verificación con WiFiManager, el SDK y un hotspot reales (P13–P15).
 
+## 1d. Publicación por trozos de C (2026-10-06)
+
+Corrige `Telemetria: JSON no generado (memoria/tamano)`: sin buffer del tamaño del mensaje, ~40 KB de heap liberados y sin pérdida de muestras por falta de heap. Detalle en [NODE_C_ARRANQUE.md](NODE_C_ARRANQUE.md). Pruebas de PC: 88/88, incluidas 5 nuevas en `tests/host/test_publish_stream.cpp`. C compila con `min_spiffs` (1.251.069 B, 63 %) sin advertencias. Pendiente en placa (P16): con Azure conectado, 30 min de telemetría sin `JSON sin memoria`, `json_no_memory` en `status` y `HEAP after_mqtt_tls_connect` registrados.
+
 ## 2. No verificado (requiere hardware)
 
 - Interoperabilidad **cifrada** ESP8266 ↔ ESP32 (CCMP con PMK/LMK) con estos núcleos.

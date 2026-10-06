@@ -17,6 +17,7 @@
 //  * Nunca se imprime SSID, contrasena ni claves (WiFiManager sin depuracion).
 #include <Arduino.h>
 #include <stddef.h>
+#include <ArduinoJson.h>
 #include <stdint.h>
 
 #include "WifiPolicy.h"
@@ -33,9 +34,11 @@ class AzureLink {
   int64_t utcMs() const;
   bool azureConfigured() const;
   bool azureEnabled() const { return azureReady_; }
-  // Comprueba tamano del paquete antes de publicar (QoS 0: aceptado por la biblioteca
-  // no implica recepcion en IoT Hub).
-  bool publish(const char* payload, size_t len);
+  // Publica `doc` (len = measureJson(doc) <= MQTT_PACKET_SIZE) escribiendolo por trozos
+  // de `chunkCap` bytes directamente en la conexion MQTT/TLS: sin buffer del tamano del
+  // mensaje. Si falla a mitad, cierra MQTT (el paquete quedo incompleto) y reconecta.
+  // QoS 0: aceptado por la biblioteca no implica recepcion en IoT Hub.
+  bool publishJson(const JsonDocument& doc, size_t len, uint8_t* chunk, size_t chunkCap);
   int rssi() const;
   uint8_t wifiChannel() const;
   // Canal que debe usar ESP-NOW ahora (el del AP si esta asociado).
