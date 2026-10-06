@@ -22,7 +22,9 @@
 static_assert(TCS_BLACK_PULSE_US > 0 && TCS_BLACK_PULSE_US < 30000UL &&
               TCS_WHITE_PULSE_US > 0 && TCS_WHITE_PULSE_US < 30000UL &&
               TCS_BLACK_PULSE_US != TCS_WHITE_PULSE_US, "Referencias TCS3200 invalidas");
-#define ONE_WIRE_BUS 23
+// DS18B20 (OneWire), pull-up de 4,7 kOhm a 3,3 V. v4 usaba GPIO23; desde 2026-10-06
+// el nodo A usa GPIO22 por cableado del usuario (libre en A: el nodo A no usa I2C).
+#define ONE_WIRE_BUS 22
 
 // ---------------- Canales del CD74HC4067 ----------------
 // DISCREPANCIA DOCUMENTADA (ver docs/DISCREPANCIAS.md):

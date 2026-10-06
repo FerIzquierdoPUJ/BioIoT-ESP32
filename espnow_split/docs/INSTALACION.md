@@ -202,7 +202,7 @@ No hay conexiones UART ni de datos entre nodos: solo radio. Cada nodo necesita a
 | pH / CO2 #1 / CO2 #2 / Turbidez / DO / TDS | canales 15 / 14 / 13 / 3 / 12 / 11 | perfil por defecto; alternativa 0..5 ([DISCREPANCIAS.md](DISCREPANCIAS.md)) |
 | TCS3200 S0 / S1 / S2 / S3 (compartidos) | GPIO16 / 17 / 18 / 19 | S0=H, S1=L (escala 20 %) |
 | TCS3200 OUT #1 / OUT #2 | GPIO34 / 35 | solo entrada |
-| DS18B20 datos | GPIO23 | pull-up de 4,7 kΩ a 3,3 V |
+| DS18B20 datos | **GPIO22** | pull-up de 4,7 kΩ a 3,3 V (v4 usaba GPIO23; `ONE_WIRE_BUS` en `node_a_config.h`) |
 
 El acondicionamiento eléctrico (divisor del CO2 de 12 kΩ/22 kΩ, ganancia 8,5) y la escala ADC no cambian: las curvas siguen interpretando el mismo voltaje.
 
