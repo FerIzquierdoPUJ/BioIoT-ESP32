@@ -1,0 +1,14 @@
+# Perfil reproducible de arduino-cli (>= 1.1): nucleo y bibliotecas fijados.
+#   arduino-cli compile --profile nodo_a BioIoT_NodeA_Sensors
+profiles:
+  nodo_a:
+    notes: Nodo A - ESP32 WROOM (ESP32 Dev Module), sensores analogicos/color/OneWire
+    fqbn: esp32:esp32:esp32
+    platforms:
+      - platform: esp32:esp32 (3.3.12)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - ArduinoJson (7.4.3)
+      - OneWire (2.3.8)
+      - DallasTemperature (4.0.6)
+      - dir: ../libraries/BioIoTCommon

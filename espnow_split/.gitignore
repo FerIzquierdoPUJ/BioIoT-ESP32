@@ -1,0 +1,11 @@
+# Secretos reales: nunca al repositorio (las plantilla *.example.h si se versionan).
+node_secrets.h
+gateway_secrets.h
+iot_configs.h
+# Exportaciones de calibracion y registros de puesta en marcha (pueden contener datos del ensayo).
+*.export.json
+calibration-export*.json
+logs/
+*.log
+# Compilaciones locales
+build/

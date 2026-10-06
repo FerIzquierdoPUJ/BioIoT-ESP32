@@ -1,0 +1,23 @@
+# Perfil reproducible de arduino-cli (>= 1.1): nucleo y bibliotecas fijados.
+#   arduino-cli compile --profile nodo_b_nodemcu BioIoT_NodeB_I2C
+profiles:
+  nodo_b_nodemcu:
+    notes: Nodo B - NodeMCU 1.0 (ESP-12E), 4 MB (FS 1 MB), sensores I2C
+    fqbn: esp8266:esp8266:nodemcuv2:eesz=4M1M
+    platforms:
+      - platform: esp8266:esp8266 (3.1.2)
+        platform_index_url: https://arduino.esp8266.com/stable/package_esp8266com_index.json
+    libraries:
+      - ArduinoJson (7.4.3)
+      - BH1750 (1.3.0)
+      - dir: ../libraries/BioIoTCommon
+  nodo_b_d1mini:
+    notes: Nodo B - LOLIN(WEMOS) D1 mini, 4 MB (FS 1 MB). Definir NODE_B_BOARD=NODE_B_BOARD_WEMOS_D1_MINI.
+    fqbn: esp8266:esp8266:d1_mini:eesz=4M1M
+    platforms:
+      - platform: esp8266:esp8266 (3.1.2)
+        platform_index_url: https://arduino.esp8266.com/stable/package_esp8266com_index.json
+    libraries:
+      - ArduinoJson (7.4.3)
+      - BH1750 (1.3.0)
+      - dir: ../libraries/BioIoTCommon

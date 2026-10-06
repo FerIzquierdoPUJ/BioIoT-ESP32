@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.1",
+  "deviceId": "esp32-bioiot-01",
+  "experiment_id": "EXP-001",
+  "type": "actuator_state",
+  "timestampUtc": "2026-09-21T14:13:20Z",
+  "actuators": {
+    "ready": true,
+    "mode": "manual_c2d",
+    "actuation": "commissioning_simulated",
+    "outputs_driven": false,
+    "pin_profile": "target_c_13_32_33_4",
+    "lastStopReason": "boot",
+    "compressor": {
+      "on": true,
+      "expiresAt": 1790000300,
+      "restartAllowedInMs": 0,
+      "source": "manual",
+      "locked": false
+    },
+    "led": {
+      "on": false,
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "brightness": 0,
+      "dutyR": 0,
+      "dutyG": 0,
+      "dutyB": 0,
+      "expiresAt": 0,
+      "source": "off",
+      "locked": false
+    },
+    "lastCommand": {
+      "commandId": "compresor-001",
+      "accepted": true,
+      "reason": "compressor_on"
+    },
+    "local_program": {
+      "enabled": false,
+      "valid": false
+    }
+  }
+}

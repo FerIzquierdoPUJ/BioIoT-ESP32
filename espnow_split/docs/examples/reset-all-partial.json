@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.1",
+  "deviceId": "esp32-bioiot-01",
+  "experiment_id": "EXP-001",
+  "type": "calibration_ack",
+  "sensor": "all",
+  "group": "reset_all",
+  "group_id": 4,
+  "state": "partial",
+  "nodes_applied": 1,
+  "nodes_total": 2,
+  "commandId": "reset-all-001",
+  "timestampUtc": "2026-09-21T14:13:20Z",
+  "physical_calibration_confirmed": false
+}

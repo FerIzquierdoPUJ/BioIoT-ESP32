@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.1",
+  "deviceId": "esp32-bioiot-01",
+  "experiment_id": "EXP-001",
+  "type": "calibration_ack",
+  "sensor": "o2_gas_1",
+  "node": "node_b",
+  "state": "timeout",
+  "status": "timeout",
+  "commandId": "cal-o2-002",
+  "calibration_version": null,
+  "nvs_ok": null,
+  "timestampUtc": "2026-09-21T14:13:20Z",
+  "physical_calibration_confirmed": false
+}

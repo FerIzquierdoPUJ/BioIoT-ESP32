@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.1",
+  "deviceId": "esp32-bioiot-01",
+  "experiment_id": "EXP-001",
+  "type": "diagnostic_report",
+  "scope": "full",
+  "report_id": 9,
+  "timestampUtc": "2026-09-21T14:13:20Z",
+  "uptimeMs": 600900,
+  "started_uptime_ms": 600000,
+  "assessment": {
+    "findings": [
+      "node_a:color_1_pulse_failure",
+      "node_b_diagnostic_node_offline"
+    ],
+    "severity": "warning",
+    "physical_fault_confirmed": false
+  },
+  "gateway": {
+    "free_heap": 151200,
+    "min_free_heap": 98400,
+    "max_alloc_heap": 69620,
+    "reset_reason": "power_on",
+    "wifi_connected": true,
+    "wifi_rssi": -58,
+    "wifi_channel": 6,
+    "espnow_channel": 6,
+    "wifi_search_state": "connected",
+    "espnow_channel_changes": 1,
+    "mqtt_connected": true,
+    "time_synced": true,
+    "espnow_enabled": true,
+    "mqtt_publish_ok": 0,
+    "mqtt_publish_fail": 0
+  },
+  "nodes": {
+    "node_a": {
+      "result": "ok",
+      "report": {
+        "node": "node_a",
+        "report_id": 9,
+        "scope": "full",
+        "findings": [
+          "color_1_pulse_failure"
+        ],
+        "color": {
+          "color_1": {
+            "out_gpio": 34,
+            "pulse_ok": false,
+            "all_pulses_zero": true
+          }
+        },
+        "physical_fault_confirmed": false
+      }
+    },
+    "node_b": {
+      "result": "node_offline",
+      "fragments_received": 0,
+      "fragments_expected": 0
+    }
+  }
+}

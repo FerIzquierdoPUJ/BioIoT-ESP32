@@ -1,0 +1,462 @@
+{
+  "schema_version": "1.1",
+  "deviceId": "esp32-bioiot-01",
+  "experiment_id": "EXP-001",
+  "timestampUtc": "2026-09-21T14:13:20Z",
+  "uptimeMs": 600400,
+  "wifiRssi": -58,
+  "alerts": [
+    "color_1_disconnected"
+  ],
+  "status": "warning",
+  "calibration": {
+    "version": null,
+    "schema_version": 2,
+    "nvs_ok": true,
+    "ph": {
+      "m": -6.112459,
+      "b": 15.01267,
+      "source": "experimental_3point",
+      "input_unit": "V",
+      "buffers": [
+        4.01,
+        7.01,
+        10.01
+      ],
+      "r2": 0.999958607,
+      "revision": 1,
+      "imported": true
+    },
+    "turb": {
+      "m": -2310.5,
+      "b": 5435.4,
+      "revision": 1,
+      "source": "initial_curve"
+    },
+    "do": {
+      "m": 0.133519,
+      "input_unit": "mV",
+      "source": "experimental_2point",
+      "zero_mv": 0,
+      "saturation_100_mv": 748.9564,
+      "r2": 1,
+      "revision": 1
+    },
+    "temp": {
+      "m": 0.9741,
+      "b": 1.0038,
+      "revision": 1,
+      "source": "initial_curve"
+    },
+    "co2": {
+      "enabled": false,
+      "a": 0,
+      "b": 0,
+      "legacy_snapshot": true
+    },
+    "co2_1": {
+      "mode": "sen0159_vendor",
+      "source": "vendor_reference",
+      "provisional": true,
+      "enabled": true,
+      "zero_point_v": 0.22,
+      "reaction_voltage_v": 0.03,
+      "a": 0,
+      "b": 0,
+      "revision": 1
+    },
+    "co2_2": {
+      "mode": "sen0159_vendor",
+      "source": "vendor_reference",
+      "provisional": true,
+      "enabled": true,
+      "zero_point_v": 0.22,
+      "reaction_voltage_v": 0.03,
+      "a": 0,
+      "b": 0,
+      "revision": 1
+    },
+    "o2_gas_1": {
+      "gain": 1,
+      "offset": 0,
+      "source": "sensor_internal_calibration",
+      "revision": 0
+    },
+    "o2_gas_2": {
+      "gain": 1,
+      "offset": 0,
+      "source": "sensor_internal_calibration",
+      "revision": 0
+    },
+    "nodes": {
+      "node_a": {
+        "confirmed_copy": true,
+        "revision": 1,
+        "storage": "ok",
+        "legacy_v4_version": 7,
+        "imported_mask": 63
+      },
+      "node_b": {
+        "confirmed_copy": true,
+        "revision": 0,
+        "storage": "ok",
+        "legacy_v4_version": 0,
+        "imported_mask": 0
+      }
+    }
+  },
+  "actuators": {
+    "ready": true,
+    "mode": "manual_c2d",
+    "actuation": "commissioning_simulated",
+    "outputs_driven": false,
+    "pin_profile": "target_c_13_32_33_4",
+    "lastStopReason": "boot",
+    "compressor": {
+      "on": false,
+      "expiresAt": 0,
+      "restartAllowedInMs": 0,
+      "source": "off",
+      "locked": false
+    },
+    "led": {
+      "on": false,
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "brightness": 0,
+      "dutyR": 0,
+      "dutyG": 0,
+      "dutyB": 0,
+      "expiresAt": 0,
+      "source": "off",
+      "locked": false
+    },
+    "lastCommand": {
+      "commandId": "",
+      "accepted": false,
+      "reason": "no_command"
+    },
+    "local_program": {
+      "enabled": false,
+      "valid": false
+    }
+  },
+  "diagnostics": {
+    "i2c": {
+      "tca_detected": true,
+      "last_error": 0,
+      "consecutive_failures": 0,
+      "readings_ok": true,
+      "source": "node_b_status"
+    },
+    "analog_mux": {
+      "sampled": true,
+      "all_near_zero": false,
+      "channels_too_similar": false,
+      "all_zero_count": 0,
+      "sampled_age_ms": 0
+    },
+    "color": {
+      "color_1_pulse_ok": false,
+      "color_2_pulse_ok": true
+    },
+    "system": {
+      "free_heap": 151200,
+      "min_free_heap": 98400,
+      "max_alloc_heap": 69620,
+      "reset_reason": "power_on",
+      "mqtt_connected": true
+    },
+    "health": "warning"
+  },
+  "sensors": {
+    "ph": {
+      "expected": true,
+      "connected": true,
+      "raw": 1365,
+      "voltage": 1.1001,
+      "value": 8.288,
+      "unit": "pH",
+      "quality": "good",
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1500,
+      "sampledAtUtc": "2026-09-21T14:13:18Z",
+      "calibration_revision": 0
+    },
+    "co2_1": {
+      "expected": true,
+      "connected": true,
+      "raw": 2483,
+      "voltage": 2.0011,
+      "value": null,
+      "unit": "ppm",
+      "quality": "below_reference_range",
+      "measurement_valid": false,
+      "below_reference_range": true,
+      "calibration_mode": "sen0159_vendor",
+      "calibration_source": "vendor_reference",
+      "provisional": true,
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1400,
+      "sampledAtUtc": "2026-09-21T14:13:18Z",
+      "calibration_revision": 0
+    },
+    "co2_2": {
+      "expected": true,
+      "connected": true,
+      "raw": 2401,
+      "voltage": 1.9349,
+      "value": null,
+      "unit": "ppm",
+      "quality": "below_reference_range",
+      "measurement_valid": false,
+      "below_reference_range": true,
+      "calibration_mode": "sen0159_vendor",
+      "calibration_source": "vendor_reference",
+      "provisional": true,
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1350,
+      "sampledAtUtc": "2026-09-21T14:13:18Z",
+      "calibration_revision": 0
+    },
+    "turbidity": {
+      "expected": false,
+      "connected": true,
+      "raw": 3110,
+      "voltage": 2.5062,
+      "value": null,
+      "unit": "NTU",
+      "quality": "out_of_range",
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1300,
+      "sampledAtUtc": "2026-09-21T14:13:18Z",
+      "calibration_revision": 0
+    },
+    "dissolved_oxygen": {
+      "expected": true,
+      "connected": true,
+      "raw": 612,
+      "voltage": 0.4932,
+      "saturation_pct": 65.85,
+      "value": 5.459,
+      "unit": "mg/L",
+      "quality": "good",
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1250,
+      "sampledAtUtc": "2026-09-21T14:13:18Z",
+      "calibration_revision": 0
+    },
+    "tds": {
+      "expected": true,
+      "connected": true,
+      "raw": 455,
+      "voltage": 0.3667,
+      "value": 145.7,
+      "unit": "ppm",
+      "quality": "good",
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1200,
+      "sampledAtUtc": "2026-09-21T14:13:18Z"
+    },
+    "temperature": {
+      "expected": true,
+      "connected": true,
+      "raw": 24.5,
+      "value": 24.87,
+      "unit": "C",
+      "quality": "good",
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1100,
+      "sampledAtUtc": "2026-09-21T14:13:18Z",
+      "calibration_revision": 0
+    },
+    "color_1": {
+      "expected": true,
+      "connected": false,
+      "rPulse": 0,
+      "gPulse": 0,
+      "bPulse": 0,
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "h": 0,
+      "s": 0,
+      "l": 0,
+      "quality": "disconnected",
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1010,
+      "sampledAtUtc": "2026-09-21T14:13:18Z"
+    },
+    "color_2": {
+      "expected": true,
+      "connected": true,
+      "rPulse": 512,
+      "gPulse": 498,
+      "bPulse": 640,
+      "r": 251,
+      "g": 251,
+      "b": 250,
+      "h": 240,
+      "s": 0.012,
+      "l": 0.982,
+      "quality": "good",
+      "node": "node_a",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 910,
+      "sampledAtUtc": "2026-09-21T14:13:19Z"
+    },
+    "light_1": {
+      "expected": true,
+      "connected": true,
+      "value": 812.5,
+      "unit": "lux",
+      "quality": "good",
+      "node": "node_b",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1420,
+      "sampledAtUtc": "2026-09-21T14:13:18Z"
+    },
+    "light_2": {
+      "expected": true,
+      "connected": true,
+      "value": 790,
+      "unit": "lux",
+      "quality": "good",
+      "node": "node_b",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 1220,
+      "sampledAtUtc": "2026-09-21T14:13:18Z"
+    },
+    "o2_gas_1": {
+      "expected": true,
+      "connected": true,
+      "i2c_detected": true,
+      "warming_up": true,
+      "stabilizing": false,
+      "measurement_valid": false,
+      "value": null,
+      "unit": "%vol",
+      "quality": "warming_up",
+      "node": "node_b",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 5420,
+      "sampledAtUtc": "2026-09-21T14:13:14Z",
+      "calibration_revision": 0
+    },
+    "o2_gas_2": {
+      "expected": true,
+      "connected": true,
+      "i2c_detected": true,
+      "warming_up": true,
+      "stabilizing": false,
+      "measurement_valid": false,
+      "value": null,
+      "unit": "%vol",
+      "quality": "warming_up",
+      "node": "node_b",
+      "data_state": "fresh",
+      "stale": false,
+      "age_ms": 5320,
+      "sampledAtUtc": "2026-09-21T14:13:14Z",
+      "calibration_revision": 0
+    }
+  },
+  "messageId": "esp32-bioiot-01:c0ffee01:1",
+  "gateway": {
+    "boot_id": "c0ffee01",
+    "snapshot_seq": 1,
+    "time_status": "synchronized",
+    "replayed": false,
+    "published_delay_ms": 500,
+    "buffered_unpublished": 1,
+    "snapshots_dropped": 0,
+    "wifi_channel": 6,
+    "espnow_channel": 6,
+    "espnow_enabled": true,
+    "wifi_search_state": "connected",
+    "wifi_ms_since_connected": 0,
+    "espnow_channel_changes": 1,
+    "mqtt_qos": 0
+  },
+  "nodes": {
+    "node_a": {
+      "online": true,
+      "boot_id": "5a11c0de",
+      "link_age_ms": 400,
+      "rssi": -48,
+      "telemetry_frames": 2,
+      "backfilled_samples": 0,
+      "rejected_records": 0,
+      "status": {
+        "age_ms": 400,
+        "uptime_ms": 240000,
+        "free_heap": 231000,
+        "min_free_heap": 219500,
+        "max_alloc_heap": 110580,
+        "reset_reason": "power_on",
+        "channel": 6,
+        "storage_ok": true,
+        "time_synced": true,
+        "channel_hunting": false,
+        "queue_depth": 0,
+        "retries": 0,
+        "tx_failures": 0,
+        "telemetry_dropped": 0,
+        "rx_rejected": 0,
+        "channel_hunts": 0,
+        "report_interval_ms": 5000
+      }
+    },
+    "node_b": {
+      "online": true,
+      "boot_id": "0b0e8266",
+      "link_age_ms": 400,
+      "rssi": -61,
+      "telemetry_frames": 1,
+      "backfilled_samples": 0,
+      "rejected_records": 0,
+      "status": {
+        "age_ms": 400,
+        "uptime_ms": 150000,
+        "free_heap": 23800,
+        "min_free_heap": 21000,
+        "max_alloc_heap": 14800,
+        "reset_reason": "power_on",
+        "channel": 6,
+        "storage_ok": true,
+        "time_synced": true,
+        "channel_hunting": false,
+        "queue_depth": 0,
+        "retries": 0,
+        "tx_failures": 0,
+        "telemetry_dropped": 0,
+        "rx_rejected": 0,
+        "channel_hunts": 0,
+        "report_interval_ms": 5000,
+        "o2_warmup_remaining_ms": 30000,
+        "o2_warmup_assumed_full": false
+      }
+    }
+  }
+}
