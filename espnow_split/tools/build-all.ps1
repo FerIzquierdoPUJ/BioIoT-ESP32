@@ -19,6 +19,7 @@ $cfg8266 = $cfg; if ($Config8266) { $cfg8266 = @("--config-file", $Config8266) }
 $jobs = @(
   @{ Name = "BioIoT_NodeA_Sensors"; Fqbn = "esp32:esp32:esp32"; Profile = "nodo_a"; Cfg = $cfg },
   @{ Name = "BioIoT_NodeB_I2C"; Fqbn = "esp8266:esp8266:nodemcuv2:eesz=4M1M"; Profile = "nodo_b_nodemcu"; Cfg = $cfg8266 },
+  @{ Name = "BioIoT_NodeB_ESP32"; Fqbn = "esp32:esp32:esp32"; Profile = "nodo_b_esp32"; Cfg = $cfg },
   @{ Name = "BioIoT_NodeC_Gateway"; Fqbn = "esp32:esp32:esp32:PartitionScheme=min_spiffs"; Profile = "nodo_c"; Cfg = $cfg }
 )
 $failed = 0

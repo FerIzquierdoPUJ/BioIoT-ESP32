@@ -20,11 +20,10 @@
 #include "bioiot_ring.h"
 
 #ifndef BIOIOT_ALLOW_UNENCRYPTED_ESPNOW
-// 1 desde 2026-10-06 por decision del usuario: el enlace cifrado ESP8266 (B) <->
-// ESP32 (C) no entrega ninguna trama en hardware (B: rx 0, sin sesion) aunque
-// SYSTEM_ID, PMK, LMK, clave HMAC y MAC coinciden. Volver a 0 cuando se verifique
-// la interoperabilidad cifrada (docs/PRUEBAS.md, P1).
-#define BIOIOT_ALLOW_UNENCRYPTED_ESPNOW 1
+// 0 = cifrado (por defecto). Historial: el 2026-10-06 se probo 1 porque el enlace
+// cifrado ESP8266 (B) <-> ESP32 (C) no entregaba ninguna trama en hardware; el nodo B
+// pasa a ESP32 (BioIoT_NodeB_ESP32) y se vuelve a cifrar en A, B y C.
+#define BIOIOT_ALLOW_UNENCRYPTED_ESPNOW 0
 #endif
 
 #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)

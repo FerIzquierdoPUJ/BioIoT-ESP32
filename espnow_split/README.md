@@ -21,6 +21,7 @@ Esta carpeta contiene la división del firmware integrado `BioIoT_Azure_Integrat
 | --- | --- |
 | [BioIoT_NodeA_Sensors](BioIoT_NodeA_Sensors) | ESP32: analógicos, color y OneWire; calibraciones de A en NVS (doble ranura + CRC) |
 | [BioIoT_NodeB_I2C](BioIoT_NodeB_I2C) | ESP8266: BH1750 y SEN0322 tras el TCA9548A; calibraciones O2 en LittleFS (doble ranura + CRC) |
+| [BioIoT_NodeB_ESP32](BioIoT_NodeB_ESP32) | ESP32 (alternativa a B): mismos sensores y lógica; I2C en GPIO21/22 como v4; calibraciones O2 en NVS (doble ranura + CRC) |
 | [BioIoT_NodeC_Gateway](BioIoT_NodeC_Gateway) | ESP32: único cliente de Azure; actuadores; enrutamiento de comandos; buffer offline |
 | [libraries/BioIoTCommon](libraries/BioIoTCommon) | Contrato de mensajes, serialización explícita, HMAC/CRC, enlace (sesiones, ACK, reintentos, fragmentación), almacenamiento, adaptadores ESP-NOW por plataforma |
 | [tools](tools) | Compilación, pruebas, generador de secretos, exportación de calibraciones v4 |

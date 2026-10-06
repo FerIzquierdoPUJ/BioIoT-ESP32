@@ -59,13 +59,15 @@ TEST(color_assumed_references_and_screenshot) {
 }
 
 TEST(co2_model_is_the_v4_header_verbatim) {
-  // La copia de la biblioteca debe ser identica a CalibrationModel.h de v4.
+  // La copia de la biblioteca debe ser identica a CalibrationModel.h de v4. Se ignora
+  // '\r': con core.autocrlf=true, un checkout puede dejar CRLF en una copia y LF en otra.
   FILE* a = fopen("../CalibrationModel.h", "rb");
   FILE* b = fopen("libraries/BioIoTCommon/src/bioiot_calibration_model.h", "rb");
   CHECK(a && b);
   if (a && b) {
+    auto next = [](FILE* f) { int c; do c = fgetc(f); while (c == '\r'); return c; };
     int ca, cb, same = 1;
-    do { ca = fgetc(a); cb = fgetc(b); if (ca != cb) same = 0; } while (ca != EOF && cb != EOF);
+    do { ca = next(a); cb = next(b); if (ca != cb) same = 0; } while (ca != EOF && cb != EOF);
     CHECK(same);
   }
   if (a) fclose(a);

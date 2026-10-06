@@ -218,6 +218,25 @@ El acondicionamiento eléctrico (divisor del CO2 de 12 kΩ/22 kΩ, ganancia 8,5)
 
 `O2_SENSOR_SHARED_SUPPLY=1` supone que los SEN0322 se alimentan del mismo 3,3 V que el ESP8266. Si no es así, ponga 0: el warm-up será completo en cada arranque. No use ESP-01: no expone GPIO4 ni GPIO5 (error de compilación).
 
+### Nodo B — ESP32 WROOM (`BioIoT_NodeB_ESP32`, alternativa al ESP8266)
+
+Mismo nodo B para C (misma identidad, protocolo, calibraciones O2 y warm-up). Se carga **uno** de los dos firmwares de B, nunca ambos a la vez. Placa: **ESP32 Dev Module**, partición por defecto. Calibraciones en NVS de doble ranura (namespace `bioiot_b`): no hay LittleFS ni procedimiento de formateo.
+
+| Componente | Pin ESP32 | Nota |
+| --- | --- | --- |
+| SDA | **GPIO21** | el mismo I2C que el firmware v4 en ESP32 |
+| SCL | **GPIO22** | |
+| DFR0576 (TCA9548A) VCC / GND | 3V3 / GND | GND común con los sensores |
+| DFR0576 (TCA9548A) | 0x77 (DIP A2/A1/A0=111) | |
+| Canal 0 / 1 | BH1750 #1 / #2 (0x23) | sin cambios |
+| Canal 2 / 3 | SEN0322 #1 / #2 (0x73) | sin cambios |
+
+**Cambio de placa B sin regenerar claves:** las claves no dependen de la MAC.
+1. `BioIoT_NodeB_ESP32/node_secrets.h` es el mismo archivo que el de `BioIoT_NodeB_I2C` (claves del enlace B↔C y MAC del gateway, que no cambian).
+2. Cargar B (ESP32) y leer su MAC con `{"action":"pairing_info"}`.
+3. En `BioIoT_NodeC_Gateway/gateway_secrets.h` cambiar **solo** `BIOIOT_NODE_B_MAC` por esa MAC y recargar C.
+4. A no cambia. Regenerar con `--force` también funciona, pero cambia las claves de los tres enlaces y obliga a recargar A, B y C (el generador escribe ambas carpetas de B).
+
 ### Nodo C — ESP32 WROOM (perfil objetivo)
 
 | Señal | GPIO | Destino | Estado por defecto |

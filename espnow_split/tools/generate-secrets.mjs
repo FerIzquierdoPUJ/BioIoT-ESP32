@@ -3,8 +3,9 @@
 //   node tools/generate-secrets.mjs --gateway-mac 24:6F:28:AA:BB:CC \
 //        --node-a-mac 24:6F:28:11:22:33 --node-b-mac 5C:CF:7F:44:55:66 [--channel 1]
 //        [--ssid "MiRed"] [--password "clave"] [--force]
-// Escribe BioIoT_NodeA_Sensors/node_secrets.h, BioIoT_NodeB_I2C/node_secrets.h y
-// BioIoT_NodeC_Gateway/gateway_secrets.h. Nunca imprime las claves. Cada enlace (A<->C,
+// Escribe BioIoT_NodeA_Sensors/node_secrets.h, BioIoT_NodeB_I2C/node_secrets.h,
+// BioIoT_NodeB_ESP32/node_secrets.h (mismo contenido) y BioIoT_NodeC_Gateway/gateway_secrets.h.
+// Cambiar solo la placa B no exige regenerar: basta con actualizar BIOIOT_NODE_B_MAC en C. Nunca imprime las claves. Cada enlace (A<->C,
 // B<->C) tiene LMK y clave HMAC propias; la PMK y el SYSTEM_ID son comunes.
 import { randomBytes } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
@@ -69,7 +70,10 @@ const gatewayFile = `${header}#define BIOIOT_NODE_A_MAC {${hexList(a)}}
 
 const targets = [
   [join(root, "BioIoT_NodeA_Sensors", "node_secrets.h"), nodeFile(link.a)],
+  // El nodo B existe en ESP8266 y en ESP32: el mismo archivo en ambas carpetas (solo
+  // se carga una de las dos placas; --node-b-mac es la MAC de la placa B en uso).
   [join(root, "BioIoT_NodeB_I2C", "node_secrets.h"), nodeFile(link.b)],
+  [join(root, "BioIoT_NodeB_ESP32", "node_secrets.h"), nodeFile(link.b)],
   [join(root, "BioIoT_NodeC_Gateway", "gateway_secrets.h"), gatewayFile],
 ];
 for (const [path] of targets) {
