@@ -36,7 +36,7 @@ Versión actual compilada con Arduino-ESP32 3.3.11: 1.252.084 bytes de programa 
 | BioIoT_Azure_Integrated.ino | Sensores, reloj NTP, MQTT, telemetría y despacho C2D |
 | azure_ca.h | Certificado raíz TLS |
 | AzureIoTSasToken.h / .cpp | Autenticación mediante SAS |
-| iot_configs.h | Host, identidad y clave privada del dispositivo |
+| iot_configs.example.h | Plantilla con valores ficticios; copiar como iot_configs.h (host, identidad y clave privada; excluido de Git) |
 | actuator_configs.h | Pines, polaridades, PWM y límites |
 | ActuatorControl.h / .cpp | Salidas, validación y estados de actuadores |
 | examples/telemetry-v1.json | Ejemplo completo del contrato JSON |
@@ -46,7 +46,7 @@ Versión actual compilada con Arduino-ESP32 3.3.11: 1.252.084 bytes de programa 
 
 1. Abrir la carpeta como sketch en Arduino IDE y seleccionar ESP32 Dev Module para ESP32-WROOM.
 2. Instalar el paquete ESP32 de Espressif y WiFiManager, PubSubClient, Azure SDK for C, OneWire, DallasTemperature, BH1750, DFRobot_OxygenSensor y ArduinoJson. WiFi, Wire, Preferences y WiFiClientSecure vienen con el paquete ESP32.
-3. Configurar IOT_HUB_HOSTNAME, DEVICE_ID, DEVICE_KEY y EXPERIMENT_ID en iot_configs.h. EXPERIMENT_ID tiene el valor de ejemplo EXP-001: cambiarlo para identificar el ensayo real. La clave es la del dispositivo, no una cadena de conexión completa; mantenerla privada.
+3. Copiar iot_configs.example.h como iot_configs.h (excluido de Git) y configurar IOT_HUB_HOSTNAME, DEVICE_ID, DEVICE_KEY y EXPERIMENT_ID en iot_configs.h. EXPERIMENT_ID tiene el valor de ejemplo EXP-001: cambiarlo para identificar el ensayo real. La clave es la del dispositivo, no una cadena de conexión completa; mantenerla privada.
 4. Opcionalmente definir WIFI_SSID y WIFI_PASSWORD. Sin ellos, WiFiManager utiliza el portal BioIoT-AP.
 5. Revisar cableado y polaridades en actuator_configs.h antes de cargar. Todos los .h y .cpp deben permanecer junto al .ino.
 6. Abrir el monitor serie a 115200 baudios.
@@ -256,9 +256,9 @@ NTP consulta pool.ntp.org y time.nist.gov antes del primer SAS/TLS. Permitir DNS
 | --- | --- |
 | CD74HC4067 SIG | GPIO36, ADC de 12 bits |
 | CD74HC4067 S0 / S1 / S2 / S3 | GPIO25 / 26 / 27 / 14 |
-| Canales analógicos 0–5 | pH, CO2 #1, CO2 #2, turbidez, DO, TDS |
+| Canales analógicos 15 / 14 / 13 / 3 / 12 / 11 | pH, CO2 #1, CO2 #2, turbidez, DO, TDS |
 | I2C | SDA GPIO21, SCL GPIO22 |
-| TCA9548A | Dirección 0x72 |
+| DFR0576 (TCA9548A) | Dirección 0x77 (DIP A2/A1/A0 = 111) |
 | TCA canales 0 / 1 | BH1750 #1 / #2, dirección 0x23 |
 | TCA canales 2 / 3 | O2 gas #1 / #2, dirección 0x73 |
 | DS18B20 | GPIO23 |
@@ -309,6 +309,12 @@ No se ha flasheado la placa ni probado el cableado, las cargas, la recepción C2
 8. Conectar cargas después de verificar niveles y etapas de potencia.
 
 ## Referencias
+
+Curva TCS3200 actualizada el 2026-10-05: referencias provisionales asumidas por el
+usuario para ambos sensores, negro 15/15/15 µs y blanco 200/200/200 µs. Se aplica
+interpolación lineal con redondeo y límites 0..255; los 10 ms de asentamiento
+ocurren antes de medir cada filtro. Detalle y resultados de la captura en
+[COLOR.md](espnow_split/docs/COLOR.md). Prueba: `node tests/color-calibration.mjs`.
 
 - [MQTT y propiedades de contenido](https://learn.microsoft.com/en-us/azure/iot-hub/iot-mqtt-connect-to-iot-hub).
 - [Formato de salida a Cosmos DB](https://learn.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-endpoints).

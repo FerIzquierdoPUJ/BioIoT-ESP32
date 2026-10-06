@@ -1,1 +1,9 @@
 /tmp/
+
+# Credenciales reales: nunca al repositorio (se versionan solo las plantillas *.example.h).
+iot_configs.h
+node_secrets.h
+gateway_secrets.h
+# Exportaciones de calibracion (datos del ensayo).
+*.export.json
+calibration-export*.json
