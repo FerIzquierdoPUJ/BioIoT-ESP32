@@ -176,7 +176,7 @@
       ]
     },
     "tca9548a": {
-      "expected_address": "0x72",
+      "expected_address": "0x77",
       "detected": false,
       "probe_error": 2,
       "probe_error_name": "address_nack",
@@ -636,7 +636,7 @@
           "expected_address": "0x73",
           "detected_addresses": [],
           "address_mismatch": false,
-          "address_0x72_conflicts_with_tca": true
+          "address_0x72_conflicts_with_tca": false
         },
         "3": {
           "channel": 3,
@@ -787,7 +787,7 @@
           "expected_address": "0x73",
           "detected_addresses": [],
           "address_mismatch": false,
-          "address_0x72_conflicts_with_tca": true
+          "address_0x72_conflicts_with_tca": false
         },
         "4": {
           "channel": 4,

@@ -109,7 +109,7 @@
   "diagnostics": {
     "health": "warning",
     "i2c": {
-      "tca_address": "0x72",
+      "tca_address": "0x77",
       "tca_detected": true,
       "last_error": 0,
       "last_error_name": "ok",

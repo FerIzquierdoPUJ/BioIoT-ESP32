@@ -103,9 +103,17 @@
 #define TCS_S3 19
 #define TCS_OUT_1 34
 #define TCS_OUT_2 35
+// Referencias provisionales asumidas por el usuario (2026-10-05), ambos sensores.
+// Curva empirica en ancho de pulso: negro -> 0, blanco -> 255, por canal RGB.
+#define TCS_BLACK_PULSE_US 15UL
+#define TCS_WHITE_PULSE_US 200UL
+static_assert(TCS_BLACK_PULSE_US > 0 && TCS_BLACK_PULSE_US < 30000UL &&
+              TCS_WHITE_PULSE_US > 0 && TCS_WHITE_PULSE_US < 30000UL &&
+              TCS_BLACK_PULSE_US != TCS_WHITE_PULSE_US, "Referencias TCS3200 invalidas");
 
 // ===================== DIRECCIONES Y CANALES I2C =====================
-#define TCA_ADDR 0x72
+// DFR0576 (TCA9548A) con DIP A2/A1/A0 = 111 -> 0x77, fuera del rango 0x70-0x73 del O2.
+#define TCA_ADDR 0x77
 #define TCA_CH_BH1750_1 0
 #define TCA_CH_BH1750_2 1
 #define TCA_CH_O2_1     2
@@ -116,12 +124,15 @@
 #define O2_ADDR_2     0x73
 
 // ===================== CANALES DEL CD74HC4067 =====================
-#define CH_PH       0
-#define CH_CO2_1    1
-#define CH_CO2_2    2
+#define CH_PH       15
+#define CH_CO2_1    14
+#define CH_CO2_2    13
 #define CH_TURB     3
-#define CH_DO       4
-#define CH_TDS      5
+#define CH_DO       12
+#define CH_TDS      11
+
+// Orden de los sensores analogicos (mismo orden que analogSensorNames).
+const uint8_t analogChannels[6] = {CH_PH, CH_CO2_1, CH_CO2_2, CH_TURB, CH_DO, CH_TDS};
 
 // ===================== DEFAULTS DE CALIBRACIÓN =====================
 // Valores que se cargan si NVS está vacío o tras un reset_all.
@@ -487,12 +498,14 @@ AnalogReading readAnalogMux(byte channel) {
   r.raw = acc / N;
   r.voltage = r.raw * (3.3f / 4095.0f);
   r.connected = !(r.raw <= 5 || r.raw >= 4090);
-  if (channel < 6) {
-    AnalogDiagnostic &d = analogDiagnostics[channel];
+  for (uint8_t i = 0; i < 6; ++i) {
+    if (analogChannels[i] != channel) continue;
+    AnalogDiagnostic &d = analogDiagnostics[i];
     d.sampled = true; d.samples = N; d.rawMin = rawMin; d.rawMax = rawMax;
     d.rawAvg = float(acc) / N;
     d.voltageAvg = d.rawAvg * (3.3f / 4095.0f);
     d.sampledAt = millis();
+    break;
   }
   return r;
 }
@@ -682,10 +695,11 @@ float readO2Percent(uint8_t tcaChannel, uint8_t address, bool &connected) {
 // ===================== TCS3200 + HSL =====================
 uint8_t pulseToIntensity(unsigned long pulse) {
   if (pulse == 0 || pulse >= 30000UL) return 0;
-  long mapped = map((long)pulse, 50L, 30000L, 255L, 0L);
-  if (mapped < 0) mapped = 0;
-  if (mapped > 255) mapped = 255;
-  return (uint8_t)mapped;
+  const float mapped = ((float)pulse - (float)TCS_BLACK_PULSE_US) * 255.0f /
+                       ((float)TCS_WHITE_PULSE_US - (float)TCS_BLACK_PULSE_US);
+  if (mapped <= 0.0f) return 0;
+  if (mapped >= 255.0f) return 255;
+  return (uint8_t)lroundf(mapped);
 }
 
 void rgbToHsl(uint8_t r, uint8_t g, uint8_t b, float &h, float &s, float &l) {
@@ -705,11 +719,14 @@ void rgbToHsl(uint8_t r, uint8_t g, uint8_t b, float &h, float &s, float &l) {
 TcsReading readTcs3200(int outPin) {
   TcsReading r;
   digitalWrite(TCS_S2, LOW);  digitalWrite(TCS_S3, LOW);
-  r.rPulse = pulseIn(outPin, LOW, 30000); delay(10);
+  delay(10);  // Dejar estabilizar el filtro ANTES de medir el pulso.
+  r.rPulse = pulseIn(outPin, LOW, 30000);
   digitalWrite(TCS_S2, HIGH); digitalWrite(TCS_S3, HIGH);
-  r.gPulse = pulseIn(outPin, LOW, 30000); delay(10);
+  delay(10);
+  r.gPulse = pulseIn(outPin, LOW, 30000);
   digitalWrite(TCS_S2, LOW);  digitalWrite(TCS_S3, HIGH);
-  r.bPulse = pulseIn(outPin, LOW, 30000); delay(10);
+  delay(10);
+  r.bPulse = pulseIn(outPin, LOW, 30000);
   r.connected = !(r.rPulse == 0 || r.gPulse == 0 || r.bPulse == 0);
   r.r = pulseToIntensity(r.rPulse);
   r.g = pulseToIntensity(r.gPulse);
@@ -1804,7 +1821,7 @@ void processDiagnostics() {
       return;
     }
     case DIAG_ANALOG_READ:
-      readAnalogMux(diagnosticIndex);
+      readAnalogMux(analogChannels[diagnosticIndex]);
       if (++diagnosticIndex >= 6) {
         updateAnalogDiagnostics();
         if (diagnosticScope == DIAG_FULL) { diagnosticIndex = 0; diagnosticPhase = DIAG_COLOR_READ; }
@@ -1979,9 +1996,9 @@ void writeDiagnosticI2C(JsonObject object, JsonArray findings) {
           (!diagnosticMainScan.tested[a] || diagnosticMainScan.codes[a] != 0)) unexpected++;
     channel["unexpected_device_found"] = unexpected > 0;
     channel["expected_address"] = channel["expected"];
-    // Include upstream replies too; 0x72 conflicts with the mux itself.
+    // Include upstream replies too.
     JsonArray detectedAddresses = channel["detected_addresses"].to<JsonArray>();
-    // Candidate O2 addresses, including the upstream collision at 0x72.
+    // Candidate O2 addresses (0x70-0x73).
     for (uint8_t a = 0x70; a <= 0x73; ++a)
       if (scan.tested[a] && scan.codes[a] == 0) detectedAddresses.add(diagnosticAddressText(a));
     bool alternate = false;
@@ -1990,7 +2007,8 @@ void writeDiagnosticI2C(JsonObject object, JsonArray findings) {
           (!diagnosticMainScan.tested[a] || diagnosticMainScan.codes[a] != 0)) alternate = true;
     const bool o2Channel = i == TCA_CH_O2_1 || i == TCA_CH_O2_2;
     channel["address_mismatch"] = o2Channel && testable && !channel["expected_found"].as<bool>() && alternate;
-    channel["address_0x72_conflicts_with_tca"] = o2Channel;
+    // Clave conservada por contrato; con el mux en 0x77 ya no hay colision.
+    channel["address_0x72_conflicts_with_tca"] = o2Channel && TCA_ADDR == 0x72;
     if (channel["address_mismatch"].as<bool>()) findings.add("tca_ch" + String(i) + "_address_mismatch");
     if (unexpected) findings.add("tca_ch" + String(i) + "_unexpected_device_found");
     if (diagnosticTca.detected && scan.selection.attempted && !scan.selection.selected)
@@ -2038,17 +2056,17 @@ void writeDiagnosticAnalog(JsonObject object, JsonArray findings) {
   for (uint8_t i = 0; i < 6; ++i) {
     const auto &a = analogDiagnostics[i];
     JsonObject channel = channels[String(i)].to<JsonObject>();
-    channel["sensor"] = analogSensorNames[i]; channel["channel"] = i;
+    channel["sensor"] = analogSensorNames[i]; channel["channel"] = analogChannels[i];
     channel["samples"] = a.samples;
     channel["raw_min"] = a.rawMin; channel["raw_max"] = a.rawMax;
     channel["raw_avg"] = a.rawAvg; channel["raw_span"] = a.rawMax - a.rawMin;
     channel["voltage_avg"] = a.voltageAvg;
-    if (i == CH_CO2_1 || i == CH_CO2_2) {
+    if (analogChannels[i] == CH_CO2_1 || analogChannels[i] == CH_CO2_2) {
       AnalogReading reading;
       reading.raw = int(a.rawAvg);
       reading.voltage = reading.raw * (3.3f / 4095.0f);
       reading.connected = !(reading.raw <= 5 || reading.raw >= 4090);
-      writeCo2Reading(channel["measurement"].to<JsonObject>(), i == CH_CO2_1 ? 0 : 1, reading, true);
+      writeCo2Reading(channel["measurement"].to<JsonObject>(), analogChannels[i] == CH_CO2_1 ? 0 : 1, reading, true);
     }
     channel["sampled_at_ms"] = a.sampledAt;
     channel["connection_confidence"] = !a.sampled ? "unknown" :
@@ -2101,7 +2119,7 @@ void printDiagnosticSummary(JsonObjectConst report) {
   if (report["analog_mux"].is<JsonObjectConst>()) {
     Serial.println("\nANALOG MUX CD74HC4067");
     for (uint8_t i = 0; i < 6; ++i)
-      Serial.printf("CH%u %-16s avg=%.2f min=%d max=%d span=%d\n", i, analogSensorNames[i],
+      Serial.printf("CH%u %-16s avg=%.2f min=%d max=%d span=%d\n", analogChannels[i], analogSensorNames[i],
           analogDiagnostics[i].rawAvg, analogDiagnostics[i].rawMin, analogDiagnostics[i].rawMax,
           analogDiagnostics[i].rawMax - analogDiagnostics[i].rawMin);
     if (analogAllNearZero)
@@ -2239,7 +2257,7 @@ void setup() {
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   ds18.begin();
 
-  Serial.print("TCA9548A en 0x");
+  Serial.print("DFR0576 (TCA9548A) en 0x");
   Serial.print(TCA_ADDR, HEX);
   Serial.println(detectI2C(TCA_ADDR) ? " detectado." : " NO detectado.");
 

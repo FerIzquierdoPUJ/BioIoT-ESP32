@@ -62,7 +62,7 @@ for(let i=0;i<2;i++){
 }
 for(const ch of Object.values(diagnostic.i2c.tca9548a.channels)){
   ch.warming_up=false;ch.measurement_testable=true;ch.expected_address=ch.expected;
-  ch.detected_addresses=[];ch.address_mismatch=false;ch.address_0x72_conflicts_with_tca=[2,3].includes(ch.channel);
+  ch.detected_addresses=[];ch.address_mismatch=false;ch.address_0x72_conflicts_with_tca=false;
 }
 const h=diagnostic.history;
 for(const operation of ['probe','select','disable']){

@@ -40,7 +40,7 @@ function make(scenario = {}) {
     diagnosticAddress:1, diagnosticChannel:0, diagnosticIndex:0, diagnosticBusDirty:false,
     recoveryBefore:{}, recoveryAfter:{}, recoveryEndOk:false, recoveryBeginOk:false,
     diagnosticTca:{}, diagnosticIsolation:{}, diagnosticCleanup:{},
-    TCA_ADDR:0x72, TCA_CH_BH1750_1:0, TCA_CH_BH1750_2:1, TCA_CH_O2_1:2, TCA_CH_O2_2:3,
+    TCA_ADDR:0x77,TCA_CH_BH1750_1:0, TCA_CH_BH1750_2:1, TCA_CH_O2_1:2, TCA_CH_O2_2:3,
     BH1750_ADDR_1:0x23, BH1750_ADDR_2:0x23, O2_ADDR_1:0x73, O2_ADDR_2:0x73,
     I2C_SDA_PIN:21, I2C_SCL_PIN:22, TCS_OUT_1:34, TCS_OUT_2:35, O2_WARMUP_MS:180000, bootMillis:0,
     uint8_t: value => value, millis: () => clock, time: () => 0,
@@ -64,7 +64,7 @@ function make(scenario = {}) {
           mask=write; return 0;
         }
         probes.push({address,mask});
-        if (address === 0x72) return rootPresent ? 0 : (scenario.rootError ?? 2);
+        if (address === 0x77) return rootPresent ? 0 : (scenario.rootError ?? 2);
         const index = mask ? Math.log2(mask) : -1;
         return index >= 0 && channels[index].includes(address) ? 0 : 2;
       },
@@ -76,6 +76,7 @@ function make(scenario = {}) {
     analogBatchValid:false,analogAllNearZero:false,analogTooSimilar:false,
     analogMinAverage:0,analogMaxAverage:0,analogAllZeroCount:0,
     analogDiagnostics:Array.from({length:6},()=>({sampled:true,rawAvg:0})),
+    analogChannels:[15,14,13,3,12,11],
     fminf:Math.min,fmaxf:Math.max,
     diagnosticColorSampled:[true,true],
     diagnosticColor:[{rPulse:0,gPulse:0,bPulse:0,connected:false},{rPulse:13615,gPulse:15889,bPulse:14736,connected:true}]

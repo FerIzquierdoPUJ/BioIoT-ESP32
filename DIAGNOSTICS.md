@@ -48,13 +48,13 @@ El monitor muestra un resumen humano, errores, estadísticas y el JSON. Si no se
 
 ### A. Todos los sensores I2C aparecen desconectados
 
-- Si 0x72 no responde: tca9548a_not_detected; downstream not_testable y expected_found=null. No se atribuye daño a los cuatro sensores.
-- Si 0x72 responde pero seleccionar un canal falla: tca_channel_select_failed con el código exacto de esa escritura.
+- Si 0x77 no responde: tca9548a_not_detected; downstream not_testable y expected_found=null. No se atribuye daño a los cuatro sensores.
+- Si 0x77 responde pero seleccionar un canal falla: tca_channel_select_failed con el código exacto de esa escritura.
 - Si seleccionar funciona y falta la dirección esperada: expected_device_missing y tca_chN_expected_device_missing.
 - Si faltan los cuatro esperados, después del warm-up: multiple_tca_channels_missing_devices.
 - CH0/CH1 esperan 0x23 y CH2/CH3 esperan 0x73. CH4–CH7 libres pueden dar channel_empty o unexpected_device_found.
 
-El bus principal se escanea de 0x01 a 0x7E con canales aislados cuando es posible. Las direcciones que ya respondían en el bus principal se excluyen de devices de los canales: ver 0x72 desde un canal no significa encontrar un sensor downstream. Si falla el aislamiento o la dirección esperada ya aparece upstream, la atribución queda ambigua y no se confirma presencia del sensor.
+El bus principal se escanea de 0x01 a 0x7E con canales aislados cuando es posible. Las direcciones que ya respondían en el bus principal se excluyen de devices de los canales: ver 0x77 desde un canal no significa encontrar un sensor downstream. Si falla el aislamiento o la dirección esperada ya aparece upstream, la atribución queda ambigua y no se confirma presencia del sensor.
 
 probe_codes conserva 126 resultados: índice 0 corresponde a 0x01, índice 125 a 0x7E. null significa no probado, no un código Wire inventado. Los ACK indican respuesta del bus, no exactitud de medición ni reparación física.
 
