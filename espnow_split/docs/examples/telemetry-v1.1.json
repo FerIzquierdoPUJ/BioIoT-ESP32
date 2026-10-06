@@ -247,7 +247,7 @@
       "raw": 612,
       "voltage": 0.4932,
       "saturation_pct": 65.85,
-      "value": 5.459,
+      "value": 5.385,
       "unit": "mg/L",
       "quality": "good",
       "node": "node_a",
@@ -255,7 +255,9 @@
       "stale": false,
       "age_ms": 1250,
       "sampledAtUtc": "2026-09-21T14:13:18Z",
-      "calibration_revision": 0
+      "calibration_revision": 0,
+      "temperature_source": "average",
+      "temperature_c": 24.98
     },
     "tds": {
       "expected": true,

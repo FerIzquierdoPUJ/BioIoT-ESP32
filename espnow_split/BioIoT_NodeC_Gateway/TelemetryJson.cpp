@@ -352,6 +352,21 @@ void writeTemperature(JsonObject o, const Snapshot& snap, const GatewayInfo& inf
   setNum(sources["node_b"], t.haveB ? t.b : NAN, 2);
 }
 
+// sensors.dissolved_oxygen: mg/L con la temperatura del sistema (B si solo esta B,
+// promedio si estan ambas, A si solo esta A). Campos aditivos temperature_source y
+// temperature_c (la temperatura usada; null si no se pudo recalcular).
+void writeDissolvedOxygen(JsonObject o, const Snapshot& snap, const GatewayInfo& info) {
+  const TempCombined t = combineTemperature(snap.sensors[kSensorTemperature], snap.state[kSensorTemperature],
+                                            snap.sensors[kSensorTemperatureB], snap.state[kSensorTemperatureB]);
+  SensorSample d = snap.sensors[kSensorDissolvedOxygen];
+  const uint8_t state = snap.state[kSensorDissolvedOxygen];
+  const bool applied = applySystemTemperatureToDo(d, state, t);
+  writeSensor(o, kSensorDissolvedOxygen, d, state, snap, info);
+  const char* src = applied ? tempSourceName(t.source) : nullptr;
+  if (src) o["temperature_source"] = src; else o["temperature_source"] = nullptr;
+  setNum(o["temperature_c"], applied ? t.value : NAN, 2);
+}
+
 void appendAlert(JsonArray alerts, const char* name, const char* suffix) {
   char buf[48];
   snprintf(buf, sizeof(buf), "%s%s", name, suffix);
@@ -423,6 +438,7 @@ void fillTelemetryJson(JsonDocument& doc, const Snapshot& snap, const GatewaySta
   for (uint8_t id = 0; id < kSensorCount; ++id) {
     JsonObject o = sensors[sensorInfo(id).key].to<JsonObject>();
     if (id == kSensorTemperature) writeTemperature(o, snap, info);
+    else if (id == kSensorDissolvedOxygen) writeDissolvedOxygen(o, snap, info);
     else writeSensor(o, id, snap.sensors[id], snap.state[id], snap, info);
   }
   // Metadatos 1.1.

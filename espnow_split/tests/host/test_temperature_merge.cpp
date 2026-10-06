@@ -160,3 +160,93 @@ TEST(temperature_b_config_and_record_belong_to_node_b) {
   CHECK_EQ(st->onTelemetry(kNodeA, single(tempRec(kSensorTemperatureB, 25.0f, kQGood, 900), 1000), 1000), 0);
   delete st;
 }
+
+// ---------------- Oxigeno disuelto con la temperatura del sistema ----------------
+#include "SensorMathA.h"
+
+namespace {
+// Registro de OD como lo envia el nodo A: con temperatura propia => mg/L y good;
+// sin ella => mg/L NaN y out_of_range (la saturacion siempre viaja si esta conectado).
+TelemetryRecord doRec(float satPct, float tempA, bool connected = true) {
+  TelemetryRecord r;
+  r.sensor = kSensorDissolvedOxygen;
+  r.flags = uint16_t((connected ? kRecConnected : 0) | kRecExpected | kRecObserved);
+  r.sampleUptimeMs = 100000;
+  r.valueCount = val::kDoCount;
+  r.vals[val::kDoRaw] = 612; r.vals[val::kDoVoltage] = 0.49f;
+  r.vals[val::kDoSatPct] = connected ? satPct : NAN;
+  const float mgl = connected && !isnan(tempA) ? satPct / 100.0f * nodea::doSaturationConcentrationMgL(tempA) : NAN;
+  r.vals[val::kDoValue] = mgl;
+  r.quality = !connected ? kQDisconnected : isfinite(mgl) ? kQGood : kQOutOfRange;
+  return r;
+}
+
+JsonDocument doTelemetry(float tempA, float tempB, bool doConnected = true) {
+  static GatewayState st;
+  st = GatewayState();
+  for (uint8_t i = 0; i < kSensorCount; ++i) st.maxAgeMs[i] = 20000;
+  const int64_t rx = 600000;
+  st.touch(kNodeA, rx, -50);
+  st.touch(kNodeB, rx, -55);
+  TelemetryMsg a;
+  a.snapshotId = 1; a.parts = 1; a.txUptimeMs = 100500;
+  a.records[a.recordCount++] = doRec(80.0f, tempA, doConnected);
+  if (!isnan(tempA)) a.records[a.recordCount++] = tempRec(kSensorTemperature, tempA, kQGood, 100000);
+  st.onTelemetry(kNodeA, a, rx);
+  if (!isnan(tempB)) st.onTelemetry(kNodeB, single(tempRec(kSensorTemperatureB, tempB, kQGood, 100000), 100500), rx);
+  Snapshot* snap = st.takeSnapshot(rx + 100, 0, ActuatorState(), 60000);
+  GatewayInfo info;
+  info.deviceId = "esp32-bioiot-01";
+  info.nowMono = rx + 200;
+  static char out[24576];
+  const size_t n = buildTelemetryJson(*snap, st, info, out, sizeof(out));
+  JsonDocument doc;
+  CHECK(n > 0 && !deserializeJson(doc, out, n));
+  return doc;
+}
+float expectedMgL(float sat, float t) { return sat / 100.0f * nodea::doSaturationConcentrationMgL(t); }
+}  // namespace
+
+TEST(do_saturation_formula_matches_node_a) {
+  for (float t = -5.0f; t <= 45.0f; t += 0.5f) CHECK_NEAR(doSaturationMgL(t), nodea::doSaturationConcentrationMgL(t), 0);
+  CHECK(isnan(doSaturationMgL(NAN)));
+}
+
+TEST(do_uses_node_b_temperature_when_only_b_has_it) {
+  JsonDocument doc = doTelemetry(NAN, 22.0f);  // A sin sonda: su OD llega out_of_range
+  JsonObject d = doc["sensors"]["dissolved_oxygen"];
+  CHECK_NEAR(d["value"].as<float>(), expectedMgL(80.0f, 22.0f), 1e-3);
+  CHECK_STR(d["quality"].as<const char*>(), "good");
+  CHECK_STR(d["temperature_source"].as<const char*>(), "node_b");
+  CHECK_NEAR(d["temperature_c"].as<float>(), 22.0, 1e-6);
+  CHECK_NEAR(d["saturation_pct"].as<float>(), 80.0, 1e-6);
+}
+
+TEST(do_uses_average_temperature_when_both_report) {
+  JsonDocument doc = doTelemetry(20.0f, 24.0f);
+  JsonObject d = doc["sensors"]["dissolved_oxygen"];
+  CHECK_NEAR(d["value"].as<float>(), expectedMgL(80.0f, 22.0f), 1e-3);  // promedio 22 C, no 20 C de A
+  CHECK_STR(d["temperature_source"].as<const char*>(), "average");
+  CHECK_NEAR(d["temperature_c"].as<float>(), 22.0, 1e-6);
+}
+
+TEST(do_with_only_node_a_temperature_is_unchanged) {
+  JsonDocument doc = doTelemetry(21.0f, NAN);
+  JsonObject d = doc["sensors"]["dissolved_oxygen"];
+  CHECK_NEAR(d["value"].as<float>(), expectedMgL(80.0f, 21.0f), 1e-3);  // igual que calcula A
+  CHECK_STR(d["temperature_source"].as<const char*>(), "node_a");
+  CHECK_STR(d["quality"].as<const char*>(), "good");
+}
+
+TEST(do_without_any_temperature_or_disconnected_keeps_node_a_result) {
+  JsonDocument noTemp = doTelemetry(NAN, NAN);
+  JsonObject d = noTemp["sensors"]["dissolved_oxygen"];
+  CHECK(d["value"].isNull());
+  CHECK_STR(d["quality"].as<const char*>(), "out_of_range");
+  CHECK(d["temperature_source"].isNull() && d["temperature_c"].isNull());
+  JsonDocument disc = doTelemetry(NAN, 22.0f, false);  // sonda de OD desconectada
+  JsonObject e = disc["sensors"]["dissolved_oxygen"];
+  CHECK(e["value"].isNull());
+  CHECK_STR(e["quality"].as<const char*>(), "disconnected");
+  CHECK(e["temperature_source"].isNull());
+}

@@ -55,4 +55,28 @@ inline TempCombined combineTemperature(const SensorSample& a, uint8_t stateA, co
   return t;
 }
 
+// Concentracion de saturacion de O2 (mg/L) segun la temperatura: la MISMA formula que
+// nodea::doSaturationConcentrationMgL (prueba de PC que las compara).
+inline float doSaturationMgL(float tempC) {
+  if (isnan(tempC)) return NAN;
+  const float t = tempC, t2 = t * t, t3 = t2 * t;
+  return 14.652f - 0.41022f * t + 0.0079910f * t2 - 0.000077774f * t3;
+}
+
+// Oxigeno disuelto en mg/L con la temperatura del sistema (la combinada de A y/o B).
+// El nodo A envia la saturacion (%) aunque no tenga temperatura propia; en ese caso
+// marca out_of_range solo porque no pudo calcular mg/L. Si hay temperatura del sistema,
+// el gateway recalcula mg/L = saturacion/100 * Cs(T) y la calidad pasa a good.
+// Devuelve false (sin cambios) si el OD no es actual, no esta conectado o no hay T.
+inline bool applySystemTemperatureToDo(SensorSample& d, uint8_t state, const TempCombined& t) {
+  if (state != kSampleFresh || !d.present || t.source == TempSource::None) return false;
+  if (!(d.flags & bioiot::kRecConnected) || d.valueCount <= bioiot::val::kDoValue) return false;
+  const float sat = d.vals[bioiot::val::kDoSatPct];
+  const float cs = doSaturationMgL(t.value);
+  if (!isfinite(sat) || !isfinite(cs)) return false;
+  d.vals[bioiot::val::kDoValue] = (sat / 100.0f) * cs;
+  if (d.quality == bioiot::kQOutOfRange) d.quality = bioiot::kQGood;  // solo faltaba la temperatura
+  return true;
+}
+
 }  // namespace gw
