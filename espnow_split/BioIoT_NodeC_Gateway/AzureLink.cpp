@@ -10,10 +10,12 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <new>
 
 #include "AzureIoTSasToken.h"
 #include "azure_ca.h"
 #include "gateway_config.h"
+#include "MemoryDiagnostics.h"
 
 #if __has_include("iot_configs.h")
 #include "iot_configs.h"
@@ -86,6 +88,8 @@ const char* AzureLink::telemetryTopic() const { return telemetryTopicBuf; }
 
 const char* AzureLink::stateName() const { return gateway::wifiPhaseName(policy_.phase(), policy_.portalOpen()); }
 
+bool AzureLink::portalOpen() const { return portal && portal->getConfigPortalActive(); }
+
 bool AzureLink::initAzure() {
   az_iot_hub_client_options options = az_iot_hub_client_options_default();
   if (az_result_failed(az_iot_hub_client_init(&hubClient, AZ_SPAN_FROM_STR(IOT_HUB_HOSTNAME),
@@ -111,8 +115,6 @@ bool AzureLink::initAzure() {
     Serial.println("Error: identificadores/topic de Azure IoT Hub.");
     return false;
   }
-  Serial.print("Telemetry MQTT topic: ");
-  Serial.println(telemetryTopicBuf);
   mqttClient.setServer(IOT_HUB_HOSTNAME, 8883);
   if (!mqttClient.setBufferSize(MQTT_PACKET_SIZE)) {
     Serial.println("Sin memoria para el buffer MQTT; Azure deshabilitado.");
@@ -140,10 +142,13 @@ void AzureLink::loadStoredCredentials() {
   memset(&conf, 0, sizeof(conf));
 }
 
-void AzureLink::begin(MessageHandler handler, uint8_t espnowChannel) {
+void AzureLink::begin(MessageHandler handler, uint8_t espnowChannel, bool publishingAllowed) {
   handler_ = g_handler = handler;
   espnowChannel_ = espnowChannel >= 1 && espnowChannel <= 13 ? espnowChannel : 1;
-  azureReady_ = azureConfigured() && initAzure();
+  gw::logInternalHeap("before_mqtt_init");
+  azureReady_ = publishingAllowed && azureConfigured() && initAzure();
+  gw::logInternalHeap("after_mqtt_init");
+  if (!publishingAllowed) Serial.println("Azure deshabilitado por memoria: sin buffer de publicacion; Wi-Fi y operacion local disponibles.");
   if (!azureConfigured()) Serial.println("Azure: iot_configs.h no configurado (plantilla); solo operacion local.");
   loadStoredCredentials();
   const bool hasStored = storedSsid_[0] != 0;
@@ -250,7 +255,12 @@ void AzureLink::openPortal(bool automatic) {
   const bool connected = wifiConnected();
   if (!connected) restoreEspNowChannel();  // aborta un intento en curso y fija el canal
   if (!portal) {
-    portal = new GatewayPortal();
+    portal = new (std::nothrow) GatewayPortal();
+    if (!portal) {
+      Serial.println("Portal no disponible: sin memoria; operacion local conservada, sin reinicio.");
+      gw::logInternalHeap("portal_allocation_failed");
+      return;
+    }
     portal->setDebugOutput(false);         // su depuracion imprime el SSID elegido
     portal->setConfigPortalBlocking(false);
     portal->setConfigPortalTimeout(0);     // los 180 s los cuenta WifiPolicy (un solo temporizador)
@@ -320,7 +330,10 @@ void AzureLink::connectMqtt() {
   memcpy(sasToken, (char*)az_span_ptr(span), az_span_size(span));
   sasToken[az_span_size(span)] = 0;
   Serial.print("Conectando MQTT a Azure IoT Hub... ");
-  if (mqttClient.connect(mqttClientId, mqttUsername, sasToken)) {
+  gw::logInternalHeap("before_mqtt_tls_connect");
+  const bool connected = mqttClient.connect(mqttClientId, mqttUsername, sasToken);
+  gw::logInternalHeap("after_mqtt_tls_connect");
+  if (connected) {
     Serial.println("OK");
     mqttConnects++;
     snprintf(c2dTopic, sizeof(c2dTopic), "devices/%s/messages/devicebound/#", DEVICE_ID);

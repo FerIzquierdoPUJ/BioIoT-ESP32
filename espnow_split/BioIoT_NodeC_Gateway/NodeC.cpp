@@ -11,6 +11,8 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <esp_mac.h>
+#include <esp_task.h>
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
 #include <esp_wifi.h>
@@ -25,6 +27,8 @@
 #include "AzureLink.h"
 #include "CloudCommands.h"
 #include "GatewayState.h"
+#include "MemoryDiagnostics.h"
+#include "StartupResources.h"
 #include "TelemetryJson.h"
 #include "gateway_config.h"
 
@@ -92,9 +96,12 @@ struct Lock {
   ~Lock() { xSemaphoreGive(g_lock); }
 };
 
-// ~48 KB (40 instantaneas, 2 ensambladores de 4 KB): una sola reserva en el heap al
-// arrancar (la region DRAM estatica del ESP32 no alcanza). Nunca se libera ni crece.
-GatewayState& g_state = *new GatewayState();
+// Reservas grandes exclusivamente en setup(), cuando main/loopTask ya existen.
+// No trasladar a .bss: se conservan las 40 instantaneas y ambos ensambladores.
+GatewayState* g_state = nullptr;
+StartupFailure g_startupFailure = StartupFailure::None;
+bool g_operational = false;
+TaskHandle_t g_localTask = nullptr;
 ActuatorState g_actShared;
 bool g_actReportPending = false;
 struct Rejection {
@@ -140,7 +147,7 @@ AzureLink g_azure;
 uint32_t g_rebootAtMs = 0;
 uint32_t g_lastPublishMs = 0;
 uint32_t g_minFreeHeap = 0xFFFFFFFF;
-char* const g_pub = static_cast<char*>(malloc(MQTT_PACKET_SIZE));  // reserva unica
+char* g_pub = nullptr;
 LineAssembler<512> g_serialLine;
 
 uint8_t nodeIndex(uint8_t node) { return node == kNodeB ? 1 : 0; }
@@ -191,34 +198,34 @@ class GatewayRadio : public EndpointHandler {
         TelemetryMsg t;
         if (!decodeTelemetry(p, len, t)) return kAckRejectedInvalid;
         Lock l;
-        g_state.onTelemetry(src, t, mono);
+        g_state->onTelemetry(src, t, mono);
         return kAckAccepted;
       }
       case MsgType::Status: {
         StatusMsg s;
         if (!decodeStatus(p, len, s)) return kAckRejectedInvalid;
         Lock l;
-        g_state.onStatus(src, s, mono);
+        g_state->onStatus(src, s, mono);
         return kAckAccepted;
       }
       case MsgType::CalState: {
         CalStateMsg c;
         if (!decodeCalState(p, len, c)) return kAckRejectedInvalid;
         Lock l;
-        return g_state.onCalState(src, c, mono) ? kAckAccepted : kAckRejectedInvalid;
+        return g_state->onCalState(src, c, mono) ? kAckAccepted : kAckRejectedInvalid;
       }
       case MsgType::CommandResult: {
         CommandResultMsg r;
         if (!decodeCommandResult(p, len, r)) return kAckRejectedInvalid;
         Lock l;
-        g_state.commands.onResult(src, r);
+        g_state->commands.onResult(src, r);
         return kAckAccepted;
       }
       case MsgType::DiagResult: {
         DiagFragmentMsg f;
         if (!decodeDiagFragment(p, len, f)) return kAckRejectedInvalid;
         Lock l;
-        DiagSession& d = g_state.diag;
+        DiagSession& d = g_state->diag;
         DiagNodePart& part = d.part[nodeIndex(src)];
         if (!d.active || !part.requested || part.done) return kAckAccepted;  // tardio: descartar
         const Reassembler::Result r = part.reasm.add(f, millis());
@@ -233,27 +240,27 @@ class GatewayRadio : public EndpointHandler {
   void onDelivery(uint8_t dst, MsgType type, uint32_t cookie, Delivery result) override {
     Lock l;
     if (type == MsgType::DiagRequest) {
-      DiagNodePart& part = g_state.diag.part[nodeIndex(dst)];
-      if (result != Delivery::Delivered && g_state.diag.active && !part.done) {
+      DiagNodePart& part = g_state->diag.part[nodeIndex(dst)];
+      if (result != Delivery::Delivered && g_state->diag.active && !part.done) {
         part.done = true;
         part.result = result == Delivery::PeerRebooted ? 3 : 2;
       }
       return;
     }
     if (type == MsgType::Calibration || type == MsgType::Config || type == MsgType::Command)
-      g_state.commands.onDelivery(cookie, result, monoMs());
+      g_state->commands.onDelivery(cookie, result, monoMs());
   }
   void onSessionConfirmed(uint8_t peer, uint32_t peerBoot) override {
     {
       Lock l;
-      g_state.node(peer).boot = peerBoot;
+      g_state->node(peer).boot = peerBoot;
     }
     g_needSync[nodeIndex(peer)] = true;
     Serial.printf("Sesion ESP-NOW confirmada con %s (boot %08lx).\n", nodeKey(peer), (unsigned long)peerBoot);
   }
   void onHello(uint8_t peer, const HelloMsg& hello) override {
     Lock l;
-    g_state.onHello(peer, hello, 0, monoMs());
+    g_state->onHello(peer, hello, 0, monoMs());
   }
 } g_radio;
 
@@ -274,14 +281,14 @@ void trackAndSend(const CloudCommand& c, uint8_t node, MsgType type, const uint8
   TrackedCommand* t;
   {
     Lock l;
-    t = g_state.commands.add(cmdId, node, uint8_t(type), op, target, c.sensor, c.commandId, c.hasCommandId, groupId,
+    t = g_state->commands.add(cmdId, node, uint8_t(type), op, target, c.sensor, c.commandId, c.hasCommandId, groupId,
                              mono, mono + ttlMs);
     if (!t) { g_eventsDropped++; return; }
   }
   const bool queued = sendToNode(node, type, payload, len, cmdId, ttlMs);
   if (!queued) {
     Lock l;
-    TrackedCommand* x = g_state.commands.find(cmdId);
+    TrackedCommand* x = g_state->commands.find(cmdId);
     if (x) { x->state = g_espnowEnabled ? kCmdFailed : kCmdRejected; x->needsPublish = true; }
   }
 }
@@ -306,7 +313,7 @@ void sendCalibration(const CloudCommand& c, uint8_t node, uint8_t op, uint8_t ta
   const uint32_t cmdId = ++g_cmdCounter;
   if (expired) {
     Lock l;
-    TrackedCommand* t = g_state.commands.add(cmdId, node, uint8_t(MsgType::Calibration), op, target, c.sensor,
+    TrackedCommand* t = g_state->commands.add(cmdId, node, uint8_t(MsgType::Calibration), op, target, c.sensor,
                                              c.commandId, c.hasCommandId, groupId, monoMs(), monoMs());
     if (t) t->state = kCmdExpired;
     return;
@@ -331,7 +338,7 @@ void startDiagnostics(const CloudCommand& c, bool fromSerial) {
   bool send[2] = {false, false};
   {
     Lock l;
-    DiagSession& d = g_state.diag;
+    DiagSession& d = g_state->diag;
     if (d.active) {
       xSemaphoreGive(g_lock);
       reject("diagnostic_report", "diagnostics", "diagnostics_busy", c);
@@ -367,8 +374,8 @@ void startDiagnostics(const CloudCommand& c, bool fromSerial) {
     o.cookie = 0xD0000000u | id; o.ttlMs = 20000; o.maxAttempts = 5; o.persistent = true;
     if (!g_ep->sendReliable(i == 0 ? kNodeA : kNodeB, MsgType::DiagRequest, buf, n, o, millis())) {
       Lock l;
-      g_state.diag.part[i].done = true;
-      g_state.diag.part[i].result = 2;
+      g_state->diag.part[i].done = true;
+      g_state->diag.part[i].result = 2;
     }
   }
   Serial.printf("Diagnostico #%lu (%s) solicitado.\n", (unsigned long)id, diagScopeName(s));
@@ -377,7 +384,7 @@ void startDiagnostics(const CloudCommand& c, bool fromSerial) {
 uint16_t currentExpectedMask(uint8_t node) {
   uint16_t mask = 0;
   for (uint8_t s = 0; s < kSensorCount; ++s)
-    if (sensorInfo(s).owner == node && (g_state.latest(s).flags & kRecExpected)) mask |= uint16_t(1u << s);
+    if (sensorInfo(s).owner == node && (g_state->latest(s).flags & kRecExpected)) mask |= uint16_t(1u << s);
   return mask;
 }
 
@@ -393,7 +400,7 @@ void handleRequest(const Request& r, uint32_t nowMs) {
       if (c.rejectStatus) {
         Lock l;
         const uint32_t id = ++g_cmdCounter;
-        TrackedCommand* t = g_state.commands.add(id, c.node ? c.node : kNodeGateway, uint8_t(MsgType::Calibration),
+        TrackedCommand* t = g_state->commands.add(id, c.node ? c.node : kNodeGateway, uint8_t(MsgType::Calibration),
                                                  c.cal.op, c.cal.target, c.sensor, c.commandId, c.hasCommandId, 0,
                                                  monoMs(), monoMs());
         if (t) { t->state = kCmdRejected; t->status = statusFromName(c.rejectStatus); }
@@ -473,7 +480,7 @@ void handleRequest(const Request& r, uint32_t nowMs) {
 
 void serviceDiagnostics(uint32_t nowMs) {
   Lock l;
-  DiagSession& d = g_state.diag;
+  DiagSession& d = g_state->diag;
   if (!d.active || d.ready) return;
   const bool timedOut = monoMs() - d.startMono >= int64_t(DIAG_TIMEOUT_MS);
   bool allDone = true;
@@ -506,7 +513,10 @@ void serviceTimeSync(uint32_t nowMs) {
 }
 
 void localTask(void*) {
-  esp_task_wdt_add(nullptr);
+  // setup crea la tarea antes de redes/salidas, pero la libera solo al terminar
+  // esa inicializacion. La notificacion sincroniza los datos entre nucleos.
+  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  if (esp_task_wdt_add(nullptr) != ESP_OK) Serial.println("Watchdog local no disponible.");
   uint32_t lastSnapshotMs = millis();
   static Request req;  // grande: fuera de la pila
   uint32_t announceUntilMs = 0, lastAnnounceMs = 0;
@@ -540,7 +550,7 @@ void localTask(void*) {
       Lock l;
       for (uint8_t node : {uint8_t(kNodeA), uint8_t(kNodeB)})
         if (g_ep->everReceived(node))
-          g_state.touch(node, mono - int64_t(uint32_t(ms - g_ep->lastFreshRxMs(node))), g_ep->lastRssi(node));
+          g_state->touch(node, mono - int64_t(uint32_t(ms - g_ep->lastFreshRxMs(node))), g_ep->lastRssi(node));
     }
     if (xQueueReceive(g_requests, &req, 0) == pdTRUE) handleRequest(req, millis());
     int64_t utc = 0;
@@ -564,11 +574,11 @@ void localTask(void*) {
     if (millis() - lastSnapshotMs >= TELEMETRY_INTERVAL_MS) {
       lastSnapshotMs = millis();
       Lock l;
-      g_state.takeSnapshot(monoMs(), utcValid ? utc : 0, g_actShared, NODE_LINK_TIMEOUT_MS);
+      g_state->takeSnapshot(monoMs(), utcValid ? utc : 0, g_actShared, NODE_LINK_TIMEOUT_MS);
     }
     {
       Lock l;
-      g_state.commands.expire(monoMs(), COMMAND_RESULT_TIMEOUT_MS);
+      g_state->commands.expire(monoMs(), COMMAND_RESULT_TIMEOUT_MS);
     }
     vTaskDelay(pdMS_TO_TICKS(10));
   }
@@ -578,11 +588,16 @@ void localTask(void*) {
 Request g_incoming;  // solo loop()
 
 void enqueue(bool fromSerial) {
+  if (!g_operational || !g_requests) {
+    Serial.println("Comando rechazado: gateway_startup_failed (actuadores bloqueados).");
+    return;
+  }
   g_incoming.fromSerial = fromSerial;
   if (xQueueSend(g_requests, &g_incoming, 0) != pdTRUE) reject("command_result", "any", "gateway_busy", g_incoming.cmd);
 }
 
 void onCloudMessage(const uint8_t* payload, size_t len) {
+  if (!g_operational) return;
   JsonDocument doc;
   const DeserializationError err = deserializeJson(doc, payload, len);
   if (err) {
@@ -636,9 +651,9 @@ GatewayInfo makeInfo() {
   i.wifiSearchState = g_azure.searchStateName();
   i.wifiEverConnected = g_azure.msSinceConnected(i.wifiMsSinceConnected);
   i.espnowChannelChanges = g_azure.channelChanges();
-  i.freeHeap = ESP.getFreeHeap();
-  i.minFreeHeap = ESP.getMinFreeHeap();
-  i.maxAllocHeap = ESP.getMaxAllocHeap();
+  i.freeHeap = heap_caps_get_free_size(kInternalHeapCaps);
+  i.minFreeHeap = heap_caps_get_minimum_free_size(kInternalHeapCaps);
+  i.maxAllocHeap = heap_caps_get_largest_free_block(kInternalHeapCaps);
   i.resetReason = resetReasonName();
   i.utcValid = utcNow(i.utcMs);
   i.mqttPublishOk = g_azure.publishOk;
@@ -664,7 +679,7 @@ void dropStaleEvents() {
   Lock l;
   const int64_t now = monoMs();
   for (uint8_t i = 0; i < CommandTracker::kSize; ++i) {
-    TrackedCommand* t = g_state.commands.nextToPublish();
+    TrackedCommand* t = g_state->commands.nextToPublish();
     if (!t || now - t->createdMono < int64_t(GATEWAY_EVENT_MAX_AGE_MS)) break;
     t->needsPublish = false;
     g_eventsDropped++;
@@ -677,18 +692,28 @@ void dropStaleEvents() {
 
 void publishPending() {
   const uint32_t nowMs = millis();
-  if (!g_pub) return;
+  if (!g_operational) return;
+  if (!g_pub) {
+    dropStaleEvents();
+    Lock l;
+    if (g_state->diag.ready) {
+      Serial.println("Diagnostico local terminado; informe JSON no disponible: sin buffer de publicacion.");
+      g_state->diag.active = false;
+      g_state->diag.ready = false;
+    }
+    return;
+  }
   if (!g_azure.mqttConnected()) {
     dropStaleEvents();
     // Sin nube: el informe de diagnostico solo se imprime por Serial.
     Lock l;
-    if (g_state.diag.ready) {
+    if (g_state->diag.ready) {
       const GatewayInfo info = makeInfo();
-      const size_t n = buildDiagnosticReport(g_state, info, g_pub, MQTT_PACKET_SIZE);
+      const size_t n = buildDiagnosticReport(*g_state, info, g_pub, MQTT_PACKET_SIZE);
       Serial.println(n ? g_pub : "Diagnostico: informe demasiado grande.");
-      if (g_state.diag.fromSerial || monoMs() - g_state.diag.startMono > int64_t(GATEWAY_EVENT_MAX_AGE_MS)) {
-        g_state.diag.active = false;
-        g_state.diag.ready = false;
+      if (g_state->diag.fromSerial || monoMs() - g_state->diag.startMono > int64_t(GATEWAY_EVENT_MAX_AGE_MS)) {
+        g_state->diag.active = false;
+        g_state->diag.ready = false;
       }
     }
     return;
@@ -715,22 +740,22 @@ void publishPending() {
   // 2. Eventos de comandos (pendiente/aplicado/rechazado/vencido/timeout) y resumenes de grupo.
   {
     Lock l;
-    TrackedCommand* t = g_state.commands.nextToPublish();
+    TrackedCommand* t = g_state->commands.nextToPublish();
     if (t) {
-      const size_t n = buildCalibrationAck(*t, g_state, info, g_pub, MQTT_PACKET_SIZE);
+      const size_t n = buildCalibrationAck(*t, *g_state, info, g_pub, MQTT_PACKET_SIZE);
       const uint32_t cmdId = t->cmdId;
       xSemaphoreGive(g_lock);
       const bool ok = publishBuffer(n, "calibration_ack");
       xSemaphoreTake(g_lock, portMAX_DELAY);
-      TrackedCommand* again = g_state.commands.find(cmdId);
+      TrackedCommand* again = g_state->commands.find(cmdId);
       if (ok && again) again->needsPublish = false;
       return;
     }
     for (auto& g : g_groups) {
       if (!g.used) continue;
       uint8_t applied, total;
-      if (!g_state.commands.groupFinal(g.groupId, applied, total)) continue;
-      const size_t n = buildGroupSummary(g.groupId, g.kind, g.commandId, g_state, info, applied, total, g_pub, MQTT_PACKET_SIZE);
+      if (!g_state->commands.groupFinal(g.groupId, applied, total)) continue;
+      const size_t n = buildGroupSummary(g.groupId, g.kind, g.commandId, *g_state, info, applied, total, g_pub, MQTT_PACKET_SIZE);
       xSemaphoreGive(g_lock);
       const bool ok = publishBuffer(n, "calibration_ack (grupo)");
       xSemaphoreTake(g_lock, portMAX_DELAY);
@@ -747,7 +772,7 @@ void publishPending() {
       return;
     }
     if (g_export.pending) {
-      const size_t n = buildCalibrationExport(g_state, info, g_export.commandId, g_pub, MQTT_PACKET_SIZE);
+      const size_t n = buildCalibrationExport(*g_state, info, g_export.commandId, g_pub, MQTT_PACKET_SIZE);
       xSemaphoreGive(g_lock);
       const bool ok = publishBuffer(n, "calibration_export");
       xSemaphoreTake(g_lock, portMAX_DELAY);
@@ -755,35 +780,69 @@ void publishPending() {
       return;
     }
     // 3. Informe de diagnostico agregado.
-    if (g_state.diag.ready) {
-      const size_t n = buildDiagnosticReport(g_state, info, g_pub, MQTT_PACKET_SIZE);
+    if (g_state->diag.ready) {
+      const size_t n = buildDiagnosticReport(*g_state, info, g_pub, MQTT_PACKET_SIZE);
       xSemaphoreGive(g_lock);
       const bool ok = publishBuffer(n, "diagnostic_report");
       xSemaphoreTake(g_lock, portMAX_DELAY);
-      if (ok || !n) { g_state.diag.active = false; g_state.diag.ready = false; }
+      if (ok || !n) { g_state->diag.active = false; g_state->diag.ready = false; }
       return;
     }
     // 4. Telemetria: la instantanea mas antigua pendiente (conserva su instante original).
-    Snapshot* s = g_state.oldestUnpublished();
+    Snapshot* s = g_state->oldestUnpublished();
     if (s) {
-      const size_t n = buildTelemetryJson(*s, g_state, info, g_pub, MQTT_PACKET_SIZE);
+      const size_t n = buildTelemetryJson(*s, *g_state, info, g_pub, MQTT_PACKET_SIZE);
       const uint32_t seq = s->seq;
       xSemaphoreGive(g_lock);
       const bool ok = publishBuffer(n, "Telemetria");
       xSemaphoreTake(g_lock, portMAX_DELAY);
       // Se marca por seq: la instantanea pudo sobrescribirse durante el publish.
-      Snapshot* again = g_state.oldestUnpublished();
+      Snapshot* again = g_state->oldestUnpublished();
       if (ok && again && again->seq == seq) again->published = true;
     }
   }
 }
 
 // ---------------- loop(): Serial ----------------
+bool readStaMacText(char (&text)[18]) {
+  uint8_t mac[6] = {};
+  // Disponible incluso en modo seguro sin inicializar el controlador Wi-Fi.
+  if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) return false;
+  snprintf(text, sizeof(text), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return true;
+}
+
+void printPairingInfo() {
+  char mac[18];
+  if (!readStaMacText(mac)) {
+    Serial.println("MAC STA no disponible.");
+    return;
+  }
+  Serial.printf("{\"node\":\"gateway\",\"sta_mac\":\"%s\",\"espnow_channel\":%u}\n",
+                mac, g_espnowEnabled ? g_port.channel() : 0);
+}
+
 void printStatus() {
+  if (!g_operational) {
+    // Sin JsonDocument/String ni mutex: util aun cuando el heap esta agotado.
+    Serial.printf("{\"node\":\"gateway\",\"startup_state\":\"safe_failed\",\"startup_failure\":\"%s\","
+                  "\"espnow_enabled\":false,\"mqtt_connected\":false,\"outputs_driven\":false,"
+                  "\"actuation\":\"blocked\",\"free_heap\":%u,\"min_free_heap\":%u,\"max_alloc_heap\":%u}\n",
+                  startupFailureName(g_startupFailure), unsigned(heap_caps_get_free_size(kInternalHeapCaps)),
+                  unsigned(heap_caps_get_minimum_free_size(kInternalHeapCaps)),
+                  unsigned(heap_caps_get_largest_free_block(kInternalHeapCaps)));
+    return;
+  }
   JsonDocument doc;
   const GatewayInfo info = makeInfo();
   doc["node"] = "gateway";
-  doc["sta_mac"] = WiFi.macAddress();
+  doc["startup_state"] = "ready";
+  doc["startup_failure"] = "none";
+  doc["publish_buffer_ready"] = g_pub != nullptr;
+  doc["azure_enabled"] = g_azure.azureEnabled();
+  char mac[18];
+  if (readStaMacText(mac)) doc["sta_mac"] = mac;
+  else doc["sta_mac"] = nullptr;
   doc["wifi_state"] = g_azure.stateName();
   doc["wifi_channel"] = info.wifiChannel;
   doc["espnow_channel"] = info.espnowChannel;
@@ -805,6 +864,7 @@ void printStatus() {
   doc["utc_valid"] = info.utcValid;
   doc["free_heap"] = info.freeHeap;
   doc["min_free_heap"] = info.minFreeHeap;
+  doc["max_alloc_heap"] = info.maxAllocHeap;
   doc["actuation"] = ACTUATOR_COMMISSIONING_MODE ? "commissioning_simulated" : "production";
   doc["pin_profile"] = ACTUATOR_PIN_PROFILE_NAME;
   doc["events_dropped"] = g_eventsDropped;
@@ -812,13 +872,13 @@ void printStatus() {
   doc["mqtt_publish_fail"] = g_azure.publishFail;
   {
     Lock l;
-    doc["snapshots_unpublished"] = g_state.unpublishedCount();
-    doc["snapshots_dropped"] = g_state.snapshotsDropped();
+    doc["snapshots_unpublished"] = g_state->unpublishedCount();
+    doc["snapshots_dropped"] = g_state->snapshotsDropped();
     for (uint8_t node : {uint8_t(kNodeA), uint8_t(kNodeB)}) {
       JsonObject n = doc[nodeKey(node)].to<JsonObject>();
-      n["online"] = g_state.nodeOnline(node, monoMs(), NODE_LINK_TIMEOUT_MS);
-      n["calibration_copy"] = g_state.node(node).calValid;
-      n["telemetry_frames"] = g_state.node(node).telemetryFrames;
+      n["online"] = g_state->nodeOnline(node, monoMs(), NODE_LINK_TIMEOUT_MS);
+      n["calibration_copy"] = g_state->node(node).calValid;
+      n["telemetry_frames"] = g_state->node(node).telemetryFrames;
     }
   }
   if (g_espnowEnabled) {
@@ -846,15 +906,56 @@ void pollSerial() {
     } else if (!strcmp(action, "status")) {
       printStatus();
     } else if (!strcmp(action, "pairing_info")) {
-      Serial.printf("{\"node\":\"gateway\",\"sta_mac\":\"%s\",\"espnow_channel\":%u}\n", WiFi.macAddress().c_str(),
-                    g_espnowEnabled ? g_port.channel() : 0);
+      printPairingInfo();
     } else if (!strcmp(action, "wifi_portal")) {
-      g_azure.startPortal();
+      if (g_operational) g_azure.startPortal();
+      else Serial.println("Portal bloqueado: gateway_startup_failed.");
     } else {
       // Como v4: por Serial no se abre control de cargas ni calibraciones.
       Serial.println("Serial: acciones admitidas: diagnostics, status, pairing_info, wifi_portal.");
     }
   }
+}
+
+struct StartupOps {
+  bool createState() {
+    g_state = new (std::nothrow) GatewayState();
+    logInternalHeap("after_state");
+    return g_state != nullptr;
+  }
+  bool createPublishBuffer() {
+    g_pub = static_cast<char*>(malloc(MQTT_PACKET_SIZE));
+    logInternalHeap("after_publish_buffer");
+    if (!g_pub) Serial.println("Sin memoria para el buffer de publicacion: Azure deshabilitado; operacion local conservada.");
+    return g_pub != nullptr;
+  }
+  bool createMutex() {
+    g_lock = xSemaphoreCreateMutex();
+    logInternalHeap("after_mutex");
+    return g_lock != nullptr;
+  }
+  bool createQueue() {
+    g_requests = xQueueCreate(4, sizeof(Request));
+    logInternalHeap("after_queue");
+    return g_requests != nullptr;
+  }
+  bool createLocalTask() {
+    const BaseType_t result = xTaskCreatePinnedToCore(localTask, "bioiot_local", 8192, nullptr, 2, &g_localTask, 1);
+    logInternalHeap("after_bioiot_local");
+    return result == pdPASS;
+  }
+};
+
+void failStartup() {
+  // La tarea aun no existe; ninguna salida/red ha sido inicializada.
+  // Liberar exclusivamente nuestros recursos: nunca NVS ni particiones.
+  if (g_requests) { vQueueDelete(g_requests); g_requests = nullptr; }
+  if (g_lock) { vSemaphoreDelete(g_lock); g_lock = nullptr; }
+  free(g_pub); g_pub = nullptr;
+  delete g_state; g_state = nullptr;
+  Serial.printf("ARRANQUE FALLIDO: %s. Modo seguro: actuadores bloqueados, sin ESP-NOW/Azure; sin reinicio automatico.\n",
+                startupFailureName(g_startupFailure));
+  logInternalHeap("safe_failed");
 }
 
 }  // namespace
@@ -863,13 +964,15 @@ void nodeCSetup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\n===== BioIoT Nodo C (gateway ESP-NOW + Azure + actuadores) =====");
-  if (!g_pub) {
-    Serial.println("Sin memoria para el buffer de publicacion: Azure deshabilitado.");
-  }
-  g_lock = xSemaphoreCreateMutex();
-  g_requests = xQueueCreate(4, sizeof(Request));
+  logInternalHeap("setup_entry");
+  Serial.printf("Memoria solicitada: GatewayState=%u, publicacion=%u, cola=4x%u, pila bioiot_local=8192, pila loop=%u, pila IDF main=%u.\n",
+                unsigned(sizeof(GatewayState)), unsigned(MQTT_PACKET_SIZE), unsigned(sizeof(Request)),
+                unsigned(getArduinoLoopTaskStackSize()), unsigned(ESP_TASK_MAIN_STACK));
+  StartupOps resources;
+  g_startupFailure = allocateStartupResources(resources);
+  if (g_startupFailure != StartupFailure::None) { failStartup(); return; }
   for (uint8_t s = 0; s < kSensorCount; ++s)
-    g_state.maxAgeMs[s] = (s == kSensorO2Gas1 || s == kSensorO2Gas2) ? SENSOR_O2_MAX_AGE_MS : SENSOR_FAST_MAX_AGE_MS;
+    g_state->maxAgeMs[s] = (s == kSensorO2Gas1 || s == kSensorO2Gas2) ? SENSOR_O2_MAX_AGE_MS : SENSOR_FAST_MAX_AGE_MS;
 
   // 1. Actuadores antes que cualquier red: arranque apagado, sin depender de Internet.
   const bool ready = g_outputs.begin(ACTUATOR_COMMISSIONING_MODE, COMPRESSOR_ELECTRICAL_CONFIRMED, LED_ELECTRICAL_CONFIRMED);
@@ -900,7 +1003,10 @@ void nodeCSetup() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(false);
   WiFi.setSleep(false);
-  Serial.printf("MAC STA gateway: %s\n", WiFi.macAddress().c_str());
+  logInternalHeap("after_wifi_init");
+  char mac[18];
+  if (readStaMacText(mac)) Serial.printf("MAC STA gateway: %s\n", mac);
+  else Serial.println("MAC STA no disponible.");
   uint8_t channel = BIOIOT_INITIAL_CHANNEL;
   {
     Preferences p;
@@ -933,19 +1039,27 @@ void nodeCSetup() {
       Serial.printf("ESP-NOW cifrado activo en canal %u; boot %08lx.\n", g_port.channel(), (unsigned long)g_ep->bootId());
     }
   }
+  logInternalHeap("after_espnow_init");
 
   // 3. Tarea local (radio + actuadores), independiente de Wi-Fi/MQTT/TLS.
   const esp_task_wdt_config_t wdt = {.timeout_ms = LOOP_WDT_TIMEOUT_MS, .idle_core_mask = 1 << 0, .trigger_panic = true};
   if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) Serial.println("Watchdog no reconfigurable.");
-  xTaskCreatePinnedToCore(localTask, "bioiot_local", 8192, nullptr, 2, nullptr, 1);
+  g_operational = true;
+  xTaskNotifyGive(g_localTask);
 
   // 4. Red: nunca bloquea el arranque; sensado y control ya funcionan sin Internet.
-  g_azure.begin(onCloudMessage, channel);
+  g_azure.begin(onCloudMessage, channel, g_pub != nullptr);
+  logInternalHeap("after_wifi_mqtt_begin");
   if (esp_task_wdt_add(nullptr) != ESP_OK) Serial.println("Watchdog de loop no disponible.");
   Serial.printf("Ultimo reinicio: %s\n", resetReasonName());
 }
 
 void nodeCLoop() {
+  if (!g_operational) {
+    pollSerial();  // status/pairing disponibles; las acciones operativas se rechazan
+    delay(10);    // deja ejecutar idle: no agregar/resetear WDT ni reiniciar
+    return;
+  }
   esp_task_wdt_reset();
   const uint32_t heap = ESP.getFreeHeap();
   if (heap < g_minFreeHeap) g_minFreeHeap = heap;

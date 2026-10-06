@@ -25,13 +25,14 @@ class AzureLink {
  public:
   using MessageHandler = void (*)(const uint8_t* payload, size_t len);
 
-  void begin(MessageHandler handler, uint8_t espnowChannel);
+  void begin(MessageHandler handler, uint8_t espnowChannel, bool publishingAllowed = true);
   void loop();
   bool wifiConnected() const;
   bool mqttConnected();
   bool timeValid() const;
   int64_t utcMs() const;
   bool azureConfigured() const;
+  bool azureEnabled() const { return azureReady_; }
   // Comprueba tamano del paquete antes de publicar (QoS 0: aceptado por la biblioteca
   // no implica recepcion en IoT Hub).
   bool publish(const char* payload, size_t len);
@@ -44,8 +45,8 @@ class AzureLink {
   const char* stateName() const;
   const char* searchStateName() const { return policy_.searchStateName(); }
   bool msSinceConnected(uint32_t& ms) const { return policy_.msSinceConnected(millis(), ms); }
-  bool portalOpen() const { return policy_.portalOpen(); }
-  uint32_t portalRemainingS() const { return policy_.portalRemainingMs(millis()) / 1000; }
+  bool portalOpen() const;
+  uint32_t portalRemainingS() const { return portalOpen() ? policy_.portalRemainingMs(millis()) / 1000 : 0; }
   const char* credentialSource() const { return gateway::wifiCredName(policy_.activeCred()); }
   bool hasStoredCredentials() const { return policy_.hasStored(); }
   uint32_t nextFullScanInS() const { return policy_.nextFullInMs(millis()) / 1000; }

@@ -45,11 +45,15 @@ Esta carpeta contiene la división del firmware integrado `BioIoT_Azure_Integrat
 | Tres firmwares implementados | Sí |
 | Compilación | Sí, con arduino-cli 1.5.1: A y C con Arduino-ESP32 3.3.12, B con ESP8266 3.1.2. Con secretos de marcador y con secretos generados |
 | Proyecto integrado | Conservado, con la corrección de color compartida con A; ver [COLOR.md](docs/COLOR.md) |
-| Pruebas de PC | 58/58: serialización, corrupción, duplicados, pérdidas, desorden, reinicios, *replay*, colas, persistencia con fallos, importación bit a bit, warm-up, datos vencidos, reloj, actuadores sin cargas, JSON 1.1 |
-| Cargado en placas | **No**. No se programó ninguna placa ni se activaron cargas |
-| Pruebas físicas | **Pendientes** (ESP-NOW cifrado mixto ESP8266↔ESP32, canal, alcance, estabilidad). Ver [PRUEBAS.md](docs/PRUEBAS.md) |
+| Pruebas de PC | 83/83: incluye Wi-Fi/hotspot, almacenamiento B y seis casos de reservas del arranque C, además de protocolo, persistencia, sensores, actuadores y JSON |
+| Cargado en placas | **C sí**, COM3, en commissioning con cargas desconectadas. A/B no se verificaron físicamente en esta revisión |
+| Pruebas físicas | C: 10 resets por EN, banner/status/pairing correctos, 0 assertions. Pendientes ESP-NOW A/B y MQTT/TLS real. Ver [arranque C](docs/NODE_C_ARRANQUE.md) y [PRUEBAS.md](docs/PRUEBAS.md) |
 | Azure | Sin cambios en recursos ni credenciales. El gateway reutiliza el formato JSON UTF-8 y las propiedades de contenido |
 
 Por defecto el gateway arranca en **modo de puesta en marcha**: ningún GPIO de carga se configura como salida y los comandos se simulan. Los actuadores con parámetros eléctricos sin confirmar quedan bloqueados también en producción ([PENDIENTES.md](docs/PENDIENTES.md)).
+
+Si C reinicia antes de mostrar el banner con `app_startup.c:86`, ver el
+[diagnóstico y corrección del arranque](docs/NODE_C_ARRANQUE.md): las reservas
+grandes se realizan en setup, con comprobaciones y modo seguro ante fallos.
 
 > **Seguridad:** `../iot_configs.h` contiene la `DEVICE_KEY` real y está versionado en `origin` (GitHub). Conviene regenerar la clave del dispositivo en IoT Hub y retirarla del historial. No se hizo nada de esto automáticamente ([DISCREPANCIAS.md](docs/DISCREPANCIAS.md)).
